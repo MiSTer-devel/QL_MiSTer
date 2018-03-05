@@ -117,6 +117,7 @@ parameter CONF_STR = {
 	"-;",
 	"O3,Video mode,PAL,NTSC;",
 	"O1,Aspect ratio,4:3,16:9;",
+	"O9A,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"-;",
 	"O78,CPU speed,Normal,x2,x4;",
 	"O45,RAM,128k,640k,896k;",
@@ -195,6 +196,8 @@ wire [24:0] ps2_mouse;
 wire [10:0] ps2_key;
 wire [32:0] TIMESTAMP;
 
+wire        forced_scandoubler;
+
 hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -204,6 +207,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 	.buttons(buttons),
 	.status(status),
+	.forced_scandoubler(forced_scandoubler),
 	
 	.TIMESTAMP(TIMESTAMP),
 
@@ -315,15 +319,28 @@ dpram #(15) vram
 /////////////////  ZX8301  ////////////////////////
 
 wire video_r, video_g, video_b;
-wire video_hs, video_vs;
+wire HSync, VSync;
+wire HBlank, VBlank, ce_pix;
 
-assign VGA_R = {8{video_r}};
-assign VGA_G = {8{video_g}};
-assign VGA_B = {8{video_b}};
-assign VGA_HS = video_hs;
-assign VGA_VS = video_vs;
+wire [1:0] scale = status[10:9];
+
 assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_vid;
+
+video_mixer #(.HALF_DEPTH(1)) video_mixer
+(
+	.*,
+	.ce_pix(ce_pix),
+	.ce_pix_out(CE_PIXEL),
+	
+	.scanlines({scale == 3, scale == 2}),
+	.scandoubler(scale || forced_scandoubler),
+	.hq2x(scale==1),
+	.mono(0),
+
+	.R({4{video_r}}),
+	.G({4{video_g}}),
+	.B({4{video_b}})
+);
 
 wire [14:0] video_addr;
 
@@ -342,6 +359,7 @@ zx8301 zx8301
 
 	.clk     ( clk_sys    ),
 	.ce      ( ce_vid     ),
+	.ce_out  ( ce_pix     ),
 
 	.ntsc    ( status[3]  ),
 	.mc_stat ( mc_stat    ),
@@ -349,12 +367,13 @@ zx8301 zx8301
 	.addr    ( video_addr ),
 	.din     ( vram_dout  ),
 
-	.hs      ( video_hs   ),
-	.vs      ( video_vs   ),
+	.hs      ( HSync      ),
+	.vs      ( VSync      ),
 	.r       ( video_r    ),
 	.g       ( video_g    ),
 	.b       ( video_b    ),
-	.de      ( VGA_DE     )
+	.HBlank  ( HBlank     ),
+	.VBlank  ( VBlank     )
 );
 
 /////////////////  ZX8302  ////////////////////////
@@ -405,7 +424,7 @@ zx8302 zx8302
 
 	.ps2_key      ( ps2_key      ),
 	
-	.vs           ( video_vs     ),
+	.vs           ( VSync        ),
 
 	.mdv_reverse  ( status[2]    ),
 

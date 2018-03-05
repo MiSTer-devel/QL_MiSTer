@@ -27,6 +27,7 @@ module zx8301
    // clock
    input  clk,
 	input  ce,      // 10.5 MHz QL pixel clock
+	output reg ce_out,
 
 	// config options
 	input  ntsc,
@@ -42,7 +43,8 @@ module zx8301
    output b,
    output reg hs,
    output reg vs,
-	output reg de
+	output reg HBlank,
+	output reg VBlank
 );
 
 /* ----------------------------------------------------------------- */
@@ -192,6 +194,7 @@ wire [2:0] pixel_color_4bpp =
 reg flash_reg;
 reg [2:0] flash_col;
 always@(posedge clk) begin
+	ce_out <= 0;
 	if(ce) begin
 		if(h_cnt == H+1)
 			flash_reg <= 1'b0;   // reset flash state at the begin of each line
@@ -202,19 +205,29 @@ always@(posedge clk) begin
 		if((me)&&(h_cnt[2:0] == 3'b111)) begin
 			addr <= addr + 1'd1;
 			video_word <= din;
+			ce_out <= 1;
 		end else begin
 			if(mode) begin 
 				// 4bpp: shift rgbf every second pixel clock
-				if(h_cnt[0])
+				if(h_cnt[0]) begin
 					video_word <= { video_word[13:8], 2'b00, video_word[5:0], 2'b00 };
-			end else
+					ce_out <= 1;
+				end
+			end else begin
 				// 2bpp, shift green byte and red byte up one pixel
 				video_word <= { video_word[14:8], 1'b0, video_word[6:0], 1'b0 };
+				ce_out <= 1;
+			end
 		end
 
+		if(h_cnt == 0) begin
+			HBlank <= 0;
+			VBlank <= (v_cnt >= V);
+		end
+		if(h_cnt == H) HBlank <= 1;
+		
 		// visible area?
 		if((v_cnt < V) && (h_cnt < H)) begin
-			de <= 1;
 			if(mode) begin
 				ql_pixel <= pixel_color_4bpp;
 				
@@ -230,7 +243,6 @@ always@(posedge clk) begin
 		end else begin
 			// black pixel outside active area
 			ql_pixel <= 0;
-			de <= 0;
 		end
 	end
 end
