@@ -35,7 +35,7 @@ module ipc (
 	input [4:0]  js0,
 	input [4:0]  js1,
 	
-	input [64:0] ps2_key,
+	input [10:0] ps2_key,
 
 	input 		 ps2_kbd_clk,
 	input 		 ps2_kbd_data

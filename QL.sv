@@ -4,7 +4,7 @@
 //  Copyright (c) 2015 Till Harbaum <till@harbaum.org> 
 //
 //  Port to MiSTer
-//  Copyright (C) 2017 Sorgelig
+//  Copyright (C) 2017,2018 Sorgelig
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -31,7 +31,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [43:0] HPS_BUS,
+	inout  [44:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -53,7 +53,7 @@ module emu
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
-	// b[1]: 0 - LED status is system status ORed with b[0]
+	// b[1]: 0 - LED status is system status OR'd with b[0]
 	//       1 - LED status is controled solely by b[0]
 	// hint: supply 2'b00 to let the system control the LED.
 	output  [1:0] LED_POWER,
@@ -61,7 +61,8 @@ module emu
 
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
-	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
+	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
 	input         TAPE_IN,
 
 	// SD-SPI
@@ -69,6 +70,7 @@ module emu
 	output        SD_MOSI,
 	input         SD_MISO,
 	output        SD_CS,
+	input         SD_CD,
 
 	//High latency DDR3 RAM interface
 	//Use for non-critical time purposes
@@ -99,7 +101,7 @@ module emu
 
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 
-assign LED_USER  = mdv_led | ioctl_download;
+assign LED_USER  = mdv_led | ioctl_download | sd_act;
 assign LED_DISK  = {1'b1, status[0]};
 assign LED_POWER = 0;
 
@@ -119,7 +121,7 @@ parameter CONF_STR = {
 	"O78,CPU speed,Normal,x2,x4;",
 	"O45,RAM,128k,640k,896k;",
 	"T6,Reset & unload MDV;",
-	"V,v1.00.",`BUILD_DATE
+	"V,v1.01.",`BUILD_DATE
 };
 
 /////////////////  CLOCKS  ////////////////////////
@@ -184,15 +186,16 @@ wire [15:0] joystick_0, joystick_1;
 wire        ioctl_download;
 wire  [7:0] ioctl_index;
 wire        ioctl_wr;
-wire [23:0] ioctl_addr;
-wire [15:0] ioctl_dout;
+wire [24:0] ioctl_addr;
+wire [15:0] ioctl_dout = {ioctl_data[7:0], ioctl_data[15:8]};
+wire [15:0] ioctl_data;
 reg         ioctl_wait = 0;
 
 wire [24:0] ps2_mouse;
-wire [64:0] ps2_key;
+wire [10:0] ps2_key;
 wire [32:0] TIMESTAMP;
 
-hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -208,7 +211,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.ioctl_index(ioctl_index),
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
-	.ioctl_dout(ioctl_dout),
+	.ioctl_dout(ioctl_data),
 	.ioctl_wait(ioctl_wait),
 
 	.ps2_key(ps2_key),
@@ -285,7 +288,7 @@ wire [15:0] rom_dout;
 dpram #(15) rom
 (
 	.wrclock(clk_sys),
-	.wraddress(ioctl_addr[14:0]),
+	.wraddress(ioctl_addr[15:1]),
 	.wren(ioctl_wr && !ioctl_index),
 	.byteena_a(2'b11),
 	.data(ioctl_dout),
@@ -366,6 +369,7 @@ wire audio;
 assign AUDIO_L = {15{audio}};
 assign AUDIO_R = {15{audio}};
 assign AUDIO_S = 0;
+assign AUDIO_MIX = 0;
 
 wire mdv_led;
 
@@ -408,7 +412,7 @@ zx8302 zx8302
 	.mdv_download ( mdv_download ),
 	.mdv_dl_wr    ( ioctl_wr && mdv_download),
 	.mdv_dl_data  ( ioctl_dout   ),
-	.mdv_dl_addr  ( ioctl_addr[16:0] )
+	.mdv_dl_addr  ( ioctl_addr[17:1] )
 );
 
 /////////////////  MOUSE  /////////////////////////

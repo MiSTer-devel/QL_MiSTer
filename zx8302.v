@@ -48,7 +48,7 @@ module zx8302
 		input [4:0]    js0,
 		input [4:0]    js1,
 		
-		input [64:0]   ps2_key,
+		input [10:0]   ps2_key,
 
       // bus interface
 		input				cep,

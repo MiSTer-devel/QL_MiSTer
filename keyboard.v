@@ -25,7 +25,7 @@ module keyboard (
 	input reset,
 
 	// ps2 interface	
-	input [64:0] ps2_key,
+	input [10:0] ps2_key,
 
 	input [4:0] js0,
 	input [4:0] js1,
@@ -116,13 +116,12 @@ wire [63:0] special_matrix = {
 // 6|     8      2      6      q      e      0      t      u
 // 7| Shift   Ctrl    Alt      x      v      /      n      ,
 
-wire pressed    = (ps2_key[15:8] != 8'hf0);
-wire extended   = (~pressed ? (ps2_key[23:16] == 8'he0) : (ps2_key[15:8] == 8'he0));
-wire [8:0] code = ps2_key[63:24] ? 9'd0 : {extended, ps2_key[7:0]}; // filter out PRNSCR and PAUSE
+wire pressed    = ps2_key[9];
+wire [7:0] code = ps2_key[7:0];
 
 always @(posedge clk) begin
 	reg old_stb;
-	old_stb <= ps2_key[64];
+	old_stb <= ps2_key[10];
 
 	if(reset) begin
 		ql_matrix <= 64'd0;
@@ -130,9 +129,9 @@ always @(posedge clk) begin
 	end else begin
 
 		// ps2 decoder has received a valid code
-		if(old_stb != ps2_key[64]) begin
+		if(old_stb != ps2_key[10]) begin
 
-			case(code[7:0])
+			case(code)
 				// modifier keys
 				8'h12:  ql_matrix[8*7+0] <= pressed; // (left) SHIFT
 				8'h14:  ql_matrix[8*7+1] <= pressed; // CTRL
