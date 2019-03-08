@@ -4,7 +4,7 @@
 //  Copyright (c) 2015 Till Harbaum <till@harbaum.org> 
 //
 //  Port to MiSTer
-//  Copyright (C) 2017,2018 Sorgelig
+//  Copyright (C) 2017-2019 Sorgelig
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -50,6 +50,8 @@ module emu
 	output        VGA_HS,
 	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
+	output        VGA_F1,
+	output  [1:0] VGA_SL,
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -96,9 +98,28 @@ module emu
 	output        SDRAM_nCS,
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
-	output        SDRAM_nWE
+	output        SDRAM_nWE,
+
+	input         UART_CTS,
+	output        UART_RTS,
+	input         UART_RXD,
+	output        UART_TXD,
+	output        UART_DTR,
+	input         UART_DSR,
+
+	// Open-drain User port.
+	// 0 - D+/RX
+	// 1 - D-/TX
+	// 2..5 - USR1..USR4
+	// Set USER_OUT to 1 to read from USER_IN.
+	input   [5:0] USER_IN,
+	output  [5:0] USER_OUT,
+
+	input         OSD_STATUS
 );
 
+assign USER_OUT = '1;
+assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 
 assign LED_USER  = mdv_led | ioctl_download | sd_act;
@@ -122,7 +143,7 @@ parameter CONF_STR = {
 	"O78,CPU speed,Normal,x2,x4;",
 	"O45,RAM,128k,640k,896k;",
 	"T6,Reset & unload MDV;",
-	"V,v1.01.",`BUILD_DATE
+	"V,v",`BUILD_DATE
 };
 
 /////////////////  CLOCKS  ////////////////////////
@@ -252,7 +273,7 @@ qlromext qlromext
 reg [11:0] reset_cnt;
 wire reset = (reset_cnt != 0);
 always @(posedge clk_sys) begin
-	if(RESET || buttons[1] || status[0] || status[6] || !pll_locked || rom_download)
+	if(RESET || buttons[1] || status[0] || !pll_locked || rom_download)
 		reset_cnt <= 12'hfff;
 	else if(ce_bus_p && reset_cnt != 0)
 		reset_cnt <= reset_cnt - 1'd1;
@@ -323,6 +344,8 @@ wire HSync, VSync;
 wire HBlank, VBlank, ce_pix;
 
 wire [1:0] scale = status[10:9];
+assign VGA_SL = scale ? scale - 1'd1 : 2'd0;
+assign VGA_F1 = 0;
 
 assign CLK_VIDEO = clk_sys;
 
@@ -332,7 +355,7 @@ video_mixer #(.HALF_DEPTH(1)) video_mixer
 	.ce_pix(ce_pix),
 	.ce_pix_out(CE_PIXEL),
 	
-	.scanlines({scale == 3, scale == 2}),
+	.scanlines(0),
 	.scandoubler(scale || forced_scandoubler),
 	.hq2x(scale==1),
 	.mono(0),
@@ -395,7 +418,7 @@ wire mdv_led;
 zx8302 zx8302
 (
 	.reset        ( reset        ),
-	.reset_mdv    ( status[0] | status[6] ),
+	.reset_mdv    ( status[0]    ),
 	.clk          ( clk_sys      ),
 	.clk11        ( clk_11m      ),
 
