@@ -23,27 +23,27 @@
 module sdram (
 
 	// interface to the MT48LC16M16 chip
-	inout [15:0]  		SDRAM_DQ,    // 16 bit bidirectional data bus
-	output reg [12:0]	SDRAM_A,    // 13 bit multiplexed address bus
-	output reg      	SDRAM_DQMH,     // two byte masks
-	output reg      	SDRAM_DQML,     // two byte masks
-	output reg[1:0] 	SDRAM_BA,      // two banks
-	output 				SDRAM_nCS,      // a single chip select
-	output 				SDRAM_nWE,      // write enable
-	output 				SDRAM_nRAS,     // row address select
-	output 				SDRAM_nCAS,     // columns address select
+	inout  reg [15:0] SDRAM_DQ,      // 16 bit bidirectional data bus
+	output reg [12:0]	SDRAM_A,       // 13 bit multiplexed address bus
+	output          	SDRAM_DQMH,    // two byte masks
+	output          	SDRAM_DQML,    // two byte masks
+	output reg  [1:0]	SDRAM_BA,      // two banks
+	output 				SDRAM_nCS,     // a single chip select
+	output 				SDRAM_nWE,     // write enable
+	output 				SDRAM_nRAS,    // row address select
+	output 				SDRAM_nCAS,    // columns address select
 
 	// cpu/chipset interface
-	input 		 		init,			// init signal after FPGA config to initialize RAM
-	input 		 		clk,			// sdram is accessed at up to 128MHz
-	input					sync,  		// reference clock to sync to
+	input 		 		init,			   // init signal after FPGA config to initialize RAM
+	input 		 		clk,			   // sdram is accessed at up to 128MHz
+	input					sync,  		   // reference clock to sync to
 	
-	input [15:0]  		din,			// data input from chipset/cpu
-	output reg [15:0] dout,			// data output to chipset/cpu
-	input [23:0]   	addr,       // 25 bit word address
-	input [1:0] 		ds,         // data strobe for hi/low byte
-	input 		 		oe,         // cpu/chipset requests read
-	input 		 		we          // cpu/chipset requests write
+	input      [15:0] din,			   // data input from chipset/cpu
+	output reg [15:0] dout,			   // data output to chipset/cpu
+	input      [23:0] addr,          // 25 bit word address
+	input       [1:0] ds,            // data strobe for hi/low byte
+	input 		 		oe,            // cpu/chipset requests read
+	input 		 		we             // cpu/chipset requests write
 );
 
 // no burst configured
@@ -62,8 +62,8 @@ localparam MODE = { 3'b000, NO_WRITE_BURST, OP_MODE, CAS_LATENCY, ACCESS_TYPE, B
 
 localparam STATE_IDLE      = 3'd0;   // first state in cycle
 localparam STATE_CMD_START = 3'd1;   // state in which a new command can be started
-localparam STATE_CMD_CONT  = STATE_CMD_START + RASCAS_DELAY - 3'd1; // 4 command can be continued
-localparam STATE_DOUT      = STATE_CMD_CONT  + CAS_LATENCY + 1'd1; // 4 command can be continued
+localparam STATE_CMD_CONT  = STATE_CMD_START + RASCAS_DELAY;       // 4 command can be continued
+localparam STATE_DOUT      = STATE_CMD_CONT  + CAS_LATENCY + 1'd1;
 localparam STATE_LAST      = 3'd7;   // last state in cycle
 
 reg [2:0] q /* synthesis noprune */;
@@ -104,17 +104,18 @@ assign SDRAM_nCS  = sd_cmd[3];
 assign SDRAM_nRAS = sd_cmd[2];
 assign SDRAM_nCAS = sd_cmd[1];
 assign SDRAM_nWE  = sd_cmd[0];
+assign {SDRAM_DQMH,SDRAM_DQML} = SDRAM_A[12:11];
 
-reg [1:0] state;
-assign SDRAM_DQ = state[1] ? din : 16'bZZZZZZZZZZZZZZZZ;
-//assign dout = SDRAM_DQ;
 
 always @(posedge clk) begin
+	reg [1:0] dqm;
+	reg [1:0] state;
+
 	sd_cmd <= CMD_INHIBIT;
+	SDRAM_DQ <= 16'bZ;
 
 	if(reset != 0) begin
 		SDRAM_BA <= 2'b00;
-		{SDRAM_DQMH,SDRAM_DQML} <= 2'b00;
 			
 		if(reset == 13) SDRAM_A <= 13'b0010000000000;
 		else   			 SDRAM_A <= MODE;
@@ -124,21 +125,26 @@ always @(posedge clk) begin
 			if(reset ==  2)  sd_cmd <= CMD_LOAD_MODE;
 		end
 	end else begin
-		if(q <= STATE_CMD_START) begin	
-			SDRAM_A <= addr[20:8];
-			SDRAM_BA <= addr[22:21];
-			{SDRAM_DQMH,SDRAM_DQML} <= { !ds[1], !ds[0] };
-		end else
-			SDRAM_A <= { 4'b0010, addr[23], addr[7:0]};
 	
-		if(q == STATE_IDLE) begin
-			state <= {we,oe};
-			if(we || oe) sd_cmd <= CMD_ACTIVE;
-			else         sd_cmd <= CMD_AUTO_REFRESH;
-		end else if(q == STATE_CMD_CONT) begin
-			if(state[1]) sd_cmd <= CMD_WRITE;
+		if(q == STATE_IDLE) state <= {we,oe};
+		else if(q <= STATE_CMD_START) begin	
+			sd_cmd <= CMD_AUTO_REFRESH;
+			if(state) begin
+				sd_cmd <= CMD_ACTIVE;
+				SDRAM_A <= addr[20:8];
+				SDRAM_BA <= addr[22:21];
+				dqm <= state[1] ? ~ds : 2'b00;
+			end
+		end
+		else if(q == STATE_CMD_CONT) begin
+			if(state) SDRAM_A <= { dqm, 2'b10, addr[23], addr[7:0]};
+			if(state[1]) begin
+				sd_cmd <= CMD_WRITE;
+				SDRAM_DQ <= din;
+			end
 			else if(state[0]) sd_cmd <= CMD_READ;
-		end else if(q == STATE_DOUT) begin
+		end
+		else if(q == STATE_DOUT) begin
 			if(state[0]) dout <= SDRAM_DQ;
 		end
 	end
