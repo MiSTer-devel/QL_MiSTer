@@ -349,8 +349,14 @@ dpram #(15) vram
 /////////////////  ZX8301  ////////////////////////
 
 wire video_r, video_g, video_b;
-wire HSync, VSync;
+wire HS, VS;
 wire HBlank, VBlank, ce_pix;
+
+reg HSync, VSync;
+always @(posedge CLK_VIDEO) begin
+	HSync <= HS;
+	if(~HSync & HS) VSync <= VS;
+end
 
 wire [1:0] scale = status[10:9];
 assign VGA_SL = scale ? scale - 1'd1 : 2'd0;
@@ -399,8 +405,8 @@ zx8301 zx8301
 	.addr    ( video_addr ),
 	.din     ( vram_dout  ),
 
-	.hs      ( HSync      ),
-	.vs      ( VSync      ),
+	.hs      ( HS         ),
+	.vs      ( VS         ),
 	.r       ( video_r    ),
 	.g       ( video_g    ),
 	.b       ( video_b    ),
