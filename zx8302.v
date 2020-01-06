@@ -55,12 +55,13 @@ module zx8302
 		input				cen,
 
 		input          ce_131k,
-		input  [32:0]  rtc_data,
+		input  [32:0]  rtc_data,		// Seconds since 1970-01-01 00:00:00
 
 		input				cpu_sel,
 		input				cpu_wr,
 		input [1:0] 	cpu_addr,      // a[5,1]
-		input [1:0] 	cpu_ds,
+		input			 	cpu_uds,
+		input			 	cpu_lds,
 		input [15:0]   cpu_din,
 		output [15:0]  cpu_dout
 		
@@ -83,15 +84,15 @@ always @(posedge clk) begin
 
 		// cpu writes to 0x18XXX area
 		if(cpu_sel && cpu_wr) begin
-			// even addresses have lds=0 and use the lower 8 data bus bits
-			if(!cpu_ds[1]) begin
+			// even addresses have uds asserted and use the upper 8 data bus bits
+			if (cpu_uds) begin
 				// cpu writes microdrive control register
 				if(cpu_addr == 2'b10)
 					mctrl <= cpu_din[15:8];
 			end
 
-			// odd addresses have lds=0 and use the lower 8 data bus bits
-			if(!cpu_ds[0]) begin
+			// odd addresses have lds asserted and use the lower 8 data bus bits
+			if (cpu_lds) begin
 				// 18003 - IPCWR
 				// (host sends a single bit to ipc)
 				if(cpu_addr == 2'b01) begin
@@ -133,8 +134,8 @@ wire [7:0] io_status = { zx8302_comdata_in, ipc_busy, 2'b00,
 
 assign cpu_dout =
 	// 18000/18001 and 18002/18003
-	(cpu_addr == 2'b00)?rtc[48:33]:
-	(cpu_addr == 2'b01)?rtc[32:17]:
+	(cpu_addr == 2'b00)?rtc[31:16]:
+	(cpu_addr == 2'b01)?rtc[15:0]:
 
 	// 18020/18021 and 18022/18023
 	(cpu_addr == 2'b10)?{io_status, irq_pending}:
@@ -273,14 +274,25 @@ always @(negedge mctrl[1]) mdv_sel <= { mdv_sel[6:0], mctrl[0] };
 // -------------------------------------- RTC --------------------------------------
 // ---------------------------------------------------------------------------------
 
-reg [48:0] rtc;
+reg [31:0] rtc;
+reg [17:0] divClk;
 always @(posedge clk) begin
 	reg old_stb;
 
-	if(ce_131k) rtc <= rtc + 1'd1;
+	if (ce_131k)
+	begin
+		divClk <= divClk + 18'd1;
+		if (divClk == 18'd131249) divClk <= 0;
+		if (!divClk) rtc <= rtc + 1'd1;
+	end
 
+	// QL base is 1961-01-01 00:00:00
+	// MiSTer base is 1970-01-01 00:00:00
+	// Difference is 283996800 seconds (9 years + 2 leap days)
+	
+	// Bootstrap clock 
 	old_stb <= rtc_data[32];
-	if(old_stb != rtc_data[32]) rtc <= {32'd283996800 + rtc_data[31:0], 17'd0};
+	if (old_stb != rtc_data[32]) rtc <= {32'd283996800 + rtc_data[31:0]};
 end
 
 endmodule

@@ -135,8 +135,7 @@ assign LED_DISK  = {1'b1, status[0]};
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
 
-assign VIDEO_ARX = status[1] ? 8'd16 : 8'd4;
-assign VIDEO_ARY = status[1] ? 8'd9  : 8'd3; 
+/////////////////  CONFIGURATION  /////////////////
 
 `include "build_id.v" 
 parameter CONF_STR = {
@@ -149,11 +148,26 @@ parameter CONF_STR = {
 	"O1,Aspect ratio,4:3,16:9;",
 	"O9A,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"-;",
-	"O78,CPU speed,Normal,x2,x4;",
-	"O45,RAM,128k,640k,896k;",
+	"O78,CPU speed,QL,16 Mhz,24 Mhz,Full;",
+	"O45,RAM,128k,640k,896k,4096k;",
 	"T6,Reset & unload MDV;",
 	"V,v",`BUILD_DATE
 };
+
+wire mdv_reverse = status[2];
+wire ntsc_mode = status[3];
+wire osd_reset = status[6];
+wire [1:0] cpu_speed = status[8:7];
+wire [1:0] scale = status[10:9];
+wire ql_mode = cpu_speed == 2'b00;
+wire gc_en = ram_cfg == 2'b11;
+
+assign VIDEO_ARX = status[1] ? 8'd16 : 8'd4;
+assign VIDEO_ARY = status[1] ? 8'd9  : 8'd3; 
+
+reg [1:0] ram_cfg;			// 00 = 128k, 01 = 640k, 10 = 896k, 11 = 4096k
+always @(posedge clk_sys) if (reset) ram_cfg <= status[5:4];
+
 
 /////////////////  CLOCKS  ////////////////////////
 
@@ -161,51 +175,107 @@ wire clk_11m;
 wire clk_sys;
 wire pll_locked;
 
-wire ce_bus_p  = duty_cycle & ce_p;
-wire ce_bus_n  = duty_cycle & ce_n;
-wire cpu_cycle = duty_cycle & sub_cycle;
-
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
-	.outclk_0(clk_sys),
-	.outclk_1(SDRAM_CLK),
-	.outclk_2(clk_11m),
+	.outclk_0(clk_sys),						// System clock
+	.outclk_1(SDRAM_CLK),					// SDRAM clock, phase shifted by -4.365ns
+	.outclk_2(clk_11m),						// Clock for 8049 IPC
 	.locked(pll_locked)
 );
 
-reg ce_p, ce_n;
-reg ce_vid;
-reg ce_sd;
-reg duty_cycle;
-reg sub_cycle;
-reg ce_131k;
-always @(negedge clk_sys) begin
-	reg [4:0] div;
+// 84Mhz sys_clk
+parameter DIV_BUS_QL = 4'd11;				// 84Mhz / 11 = 7.64Mhz
+parameter DIV_BUS_16 = 4'd5;				// 84Mhz / 5 = 16.8Mhz
+parameter DIV_BUS_24 = 4'd3;				// 84Mhz / 3 = 21.5Mhz
+parameter DIV_BUS_FULL = 4'd2;			// 84Mhz / 2 = 42Mhz
+
+parameter DIV_131k = 10'd640;				// 84Mhz / 640 = 131250Hz
+parameter DIV_VID = 4'd8;					// 84Mhz / 8 = 10.5Mhz
+parameter DIV_SD = 3'd2;					// 84Mhz / 2 = 42Mhz (effectively 21Mhz SPI speed)
+
+// 94.5Mhz sys_clk
+/*parameter DIV_BUS_QL = 4'd13;				// 94.5Mhz / 13 = 7.27Mhz
+parameter DIV_BUS_16 = 4'd6;				// 94.5Mhz / 6 = 15.75Mhz
+parameter DIV_BUS_24 = 4'd4;				// 94.5Mhz / 4 = 23.625Mhz
+parameter DIV_BUS_FULL = 4'd2;			// 94.5Mhz / 2 = 47.25Mhz
+
+parameter DIV_131k = 10'd720;				// 94.5Mhz / 720 = 131250Hz
+parameter DIV_VID = 4'd9;					// 94.5Mhz / 9 = 10.5Mhz
+parameter DIV_SD = 3'd2;					// 94.5Mhz / 2 = 47.25Mhz (effectively 23.625Mhz SPI speed)*/
+
+// 105Mhz sys_clk
+/*parameter DIV_BUS_QL = 4'd14;				// 105Mhz / 14 = 7.5Mhz
+parameter DIV_BUS_16 = 4'd7;				// 105Mhz / 7 = 15Mhz
+parameter DIV_BUS_24 = 4'd4;				// 105Mhz / 4 = 26.25Mhz
+parameter DIV_BUS_FULL = 4'd2;			// 105Mhz / 2 = 52.5Mhz
+
+parameter DIV_131k = 10'd800;				// 105Mhz / 800 = 131250Hz
+parameter DIV_VID = 4'd10;					// 105Mhz / 10 = 10.5Mhz
+parameter DIV_SD = 3'd3;					// 105Mhz / 3 = 35hz (effectively 17.5Mhz SPI speed)*/
+
+
+reg ce_bus_p, ce_bus_n;
+reg ce_131k;									// Supposed to be 131025 Hz for SDRAM refresh and clock update
+reg ce_vid;										// 10.5Mhz pixel clock
+reg ce_sd;										// ~50 Mhz SD clock
+
+always @(negedge clk_sys)
+begin
+	reg [3:0] divBus;
 	reg [9:0] div131k;
-	
-	div131k<= div131k + 1'd1;
-	if(div131k == 640) div131k <= 0;
-	ce_131k <= !div131k;
-	
-	div    <= div + 1'd1;
+	reg [3:0] divVid;
+	reg [2:0] divSD;
 
-	ce_p   <= (div[2:0] == 0);
-	ce_n   <= (div[2:0] == 4);
-
-	ce_vid <= !div[2:0];
-	ce_sd  <= !div[1:0];
-
-	if(!div[2:0]) begin
-		case(status[8:7])
-			0: duty_cycle <= !div[4:3];
-			1: duty_cycle <= !div[3];
-			2,3: duty_cycle <= 1;
-		endcase
-		
-		if(!div[4:3]) sub_cycle <= ~sub_cycle || status[8:7];
+	if (reset) 
+	begin
+		divBus <= 0;
+		div131k <= 0;
+		divVid <= 0;
+		divSD <= 0;
+	end else begin	
+		divBus <= divBus + 4'd1;
+		div131k<= div131k + 10'd1;
+		divVid <= divVid + 4'd1;
+		divSD  <= divSD + 3'd1;
 	end
+	
+	ce_bus_p <= divBus == 0;
+	case (cpu_speed)
+	0:	begin
+			// Original QL speed
+			if (divBus == DIV_BUS_QL - 1) divBus <= 0;
+			ce_bus_n <= divBus == DIV_BUS_QL / 2;
+		end
+
+	1: begin
+			// Gold Card 16Mhz
+			if (divBus == DIV_BUS_16 - 1) divBus <= 0;	
+			ce_bus_n <= divBus == DIV_BUS_16 / 2;
+		end
+	
+	2: begin
+			// Gold Card 24Mhz
+			if (divBus == DIV_BUS_24 - 1) divBus <= 0;	
+			ce_bus_n <= divBus == DIV_BUS_24 / 2;
+		end
+	
+	3: begin
+			// Full speed
+			if (divBus == DIV_BUS_FULL - 1) divBus <= 0;	
+			ce_bus_n <= divBus == DIV_BUS_FULL / 2;
+		end
+	endcase
+
+	if (div131k == DIV_131k - 1) div131k <= 0;
+	ce_131k <= !div131k;						
+		
+	if (divVid == DIV_VID - 1) divVid <= 0;	
+	ce_vid <= !divVid;
+	
+	if (divSD == DIV_SD - 1) divSD <= 0;
+	ce_sd <= !divSD;							
 end
 
 /////////////////  HPS  ///////////////////////////
@@ -257,17 +327,22 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 /////////////////  SD  ////////////////////////////
 
-wire qlsd_rd = cpu_rom && (cpu_addr[15:0] == 16'hfee4);  // only one register actually returns data
+wire qlsd_en  = (!gc_en || rom_shadow) && cpu_rom && cpu_rd;
+wire qlsd_reg = qlsd_en && (cpu_addr[15:4] == 12'hfee || cpu_addr[15:4] == 12'hfef);
+wire qlsd_rd  = qlsd_en && (cpu_addr[15:0] == 16'hfee4);  // only one register actually returns data
+wire qlsd_dat = qlsd_en &&  cpu_addr[15:8] == 8'hff;
+wire qlsd_sel = qlsd_reg || qlsd_dat;
 wire [7:0] qlsd_dout;
+wire qlsd_dtack;
 
 qlromext qlromext
 (
 	.clk		( clk_sys    		),
 
-	.cen     ( ce_bus_n        ),
 	.ce_sd	( ce_sd    			),
+	.dtack   ( qlsd_dtack      ),
 
-	.romoel  ( !(cpu_rom && cpu_cycle) ),
+	.romoel  ( !qlsd_sel 		),
 	.a       ( cpu_addr[15:0]	),
 	.d       ( qlsd_dout       ),
 	.sd_do   ( SD_MISO         ),
@@ -290,14 +365,14 @@ end
 
 /////////////////  SDRAM  /////////////////////////
 
-wire rom_download = ioctl_download && !ioctl_index;
-
-wire [23:0] sdram_addr = { 5'b00000, cpu_addr[19:1]};
+wire [23:0] sdram_addr = { 3'b000, cpu_addr[21:1]};
 wire [15:0] sdram_din  = cpu_dout;
-wire        sdram_wr   = cpu_cycle & cpu_wr & cpu_ram;
-wire        sdram_oe   = cpu_cycle & cpu_rd & cpu_ram;
-wire  [1:0] sdram_ds   = ~cpu_ds;
+wire        sdram_wr   = cpu_as && !cpu_rw && (cpu_ram || rom_shadow_write);
+wire        sdram_oe   = cpu_rd && (cpu_ram || rom_shadow_read);
+wire			sdram_uds  = cpu_uds;
+wire			sdram_lds  = cpu_lds;
 wire [15:0] sdram_dout;
+wire			sdram_dtack;
 
 assign SDRAM_CKE = 1;
 sdram sdram
@@ -305,41 +380,80 @@ sdram sdram
 	.*,
 
    // system interface
-   .clk    ( clk_sys     ),
-   .sync   ( ce_p        ),
-   .init   ( !pll_locked ),
+   .clk		( clk_sys      ),
+	.refresh	( ce_131k		),
+   .init  	( !pll_locked  ),
 
    // cpu interface
-   .din    ( sdram_din   ),
-   .addr   ( sdram_addr  ),
-   .we     ( sdram_wr    ),
-   .oe     ( sdram_oe    ),
-   .ds     ( sdram_ds    ),
-   .dout   ( sdram_dout  )
+   .din		( sdram_din    ),
+   .addr		( sdram_addr   ),
+   .we		( sdram_wr     ),
+   .oe		( sdram_oe     ),
+   .uds		( sdram_uds    ),
+   .lds		( sdram_lds    ),
+   .dout		( sdram_dout   ),
+	.dtack 	( sdram_dtack	)
 );
 
-wire [15:0] rom_dout;
-dpram #(15) rom
+//////////////  GoldCard registers  ///////////////
+
+// GoldCard style ROM shadow RAM
+reg rom_shadow;
+wire rom_shadow_read = cpu_rd && cpu_os_rom && rom_shadow;
+wire rom_shadow_write = cpu_as && !cpu_rw && cpu_os_rom && !rom_shadow;
+
+always @(posedge clk_sys)
+begin
+	if (reset) 
+		rom_shadow <= 0;
+	else if (gc_io && cpu_wr && cpu_uds && !cpu_lds)
+	begin
+		if (cpu_addr[7:0] == 8'h60)
+			rom_shadow <= 1;				// glo_rena: enable shadow RAM
+		else if (cpu_addr[7:0] == 8'h64)
+			rom_shadow <= 0;				// glo_rdis: disable shadow RAM
+	end
+end
+
+//////////////////  ROM  //////////////////////////
+
+wire rom_download = ioctl_download && !ioctl_index;
+wire rom_ioctl_write = ioctl_wr && !ioctl_index;
+
+wire [15:0] ql_rom_dout;
+dpram #(15) ql_rom
 (
-	.wrclock(clk_sys),
-	.wraddress(ioctl_addr[15:1]),
-	.wren(ioctl_wr && !ioctl_index),
-	.byteena_a(2'b11),
-	.data(ioctl_dout),
+	.wrclock		( clk_sys				),
+	.wraddress	( ioctl_addr[15:1] 	),
+	.wren			( rom_ioctl_write	 	),
+	.byteena_a	( 2'b11					),
+	.data			( ioctl_dout			),
 
-	.rdclock(clk_sys),
-	.rdaddress(cpu_addr[15:1]),
-	.q(rom_dout)
+	.rdclock		( clk_sys				),
+	.rdaddress	( cpu_addr[15:1]		),
+	.q				( ql_rom_dout			)
 );
+
+
+///////////  MisterGoldCard boot ROM  /////////////
+
+wire [15:0] gc_rom_dout;
+mgc_rom gc_rom (
+	.clock		( clk_sys			),
+	.address		( cpu_addr[15:1]	),
+	.q				( gc_rom_dout		)
+);
+
+/////////////////  VRAM  //////////////////////////	
 
 wire [15:0] vram_dout;
 dpram #(15) vram
 (
 	.wrclock(clk_sys),
-	.wraddress(sdram_addr[14:0]),
-	.wren(sdram_wr && (sdram_addr[23:15] == 2)),
-	.byteena_a(sdram_ds),
-	.data(sdram_din),
+	.wraddress	( cpu_addr[15:1] ),
+	.wren			( cpu_wr && (cpu_addr[23:16] == 2) ),
+	.byteena_a	( {cpu_uds, cpu_lds}	),
+	.data			( cpu_dout ),
 
 	.rdclock(clk_sys),
 	.rdaddress(video_addr),
@@ -358,7 +472,6 @@ always @(posedge CLK_VIDEO) begin
 	if(~HSync & HS) VSync <= VS;
 end
 
-wire [1:0] scale = status[10:9];
 assign VGA_SL = scale ? scale - 1'd1 : 2'd0;
 assign VGA_F1 = 0;
 
@@ -382,13 +495,20 @@ video_mixer #(.HALF_DEPTH(1)) video_mixer
 
 wire [14:0] video_addr;
 
-// the zx8301 has only one write-only register at $18063
-wire zx8301_cs = cpu_cycle && cpu_io && ({cpu_addr[6:5], cpu_addr[1]} == 3'b111) && cpu_wr && !cpu_ds[0];
+// The zx8301 has only one write-only register at $18063
+wire zx8301_ce = ql_io && ({cpu_addr[6:5], cpu_addr[1]} == 3'b111) && cpu_wr && cpu_lds;
 
 reg [7:0] mc_stat;
-always @(posedge clk_sys) begin
-	if(reset) mc_stat <= 8'h00;
-	else if(ce_bus_p && zx8301_cs) mc_stat <= cpu_dout[7:0];
+always @(posedge clk_sys)
+begin
+	if (reset) 
+	begin
+		mc_stat <= 8'h00;
+	end
+	else if (zx8301_ce) 
+	begin
+		mc_stat <= cpu_dout[7:0];
+	end
 end
 
 zx8301 zx8301
@@ -399,7 +519,7 @@ zx8301 zx8301
 	.ce      ( ce_vid     ),
 	.ce_out  ( ce_pix     ),
 
-	.ntsc    ( status[3]  ),
+	.ntsc    ( ntsc_mode  ),
 	.mc_stat ( mc_stat    ),
 
 	.addr    ( video_addr ),
@@ -416,7 +536,7 @@ zx8301 zx8301
 
 /////////////////  ZX8302  ////////////////////////
 
-wire zx8302_sel = cpu_cycle && cpu_io && !cpu_addr[6];
+wire zx8302_sel = cpu_io && ql_io && !cpu_addr[6];
 wire [1:0] zx8302_addr = {cpu_addr[5], cpu_addr[1]};
 wire [15:0] zx8302_dout;
 
@@ -452,7 +572,8 @@ zx8302 zx8302
 	.cpu_sel      ( zx8302_sel   ),
 	.cpu_wr       ( cpu_wr       ),
 	.cpu_addr     ( zx8302_addr  ),
-	.cpu_ds       ( cpu_ds       ),
+	.cpu_uds		  ( cpu_uds 	  ),
+	.cpu_lds      ( cpu_lds		  ),
 	.cpu_din      ( cpu_dout     ),
    .cpu_dout     ( zx8302_dout  ),
 
@@ -464,7 +585,7 @@ zx8302 zx8302
 	
 	.vs           ( VSync        ),
 
-	.mdv_reverse  ( status[2]    ),
+	.mdv_reverse  ( mdv_reverse  ),
 
 	.mdv_download ( mdv_download ),
 	.mdv_dl_wr    ( ioctl_wr && mdv_download),
@@ -475,7 +596,7 @@ zx8302 zx8302
 /////////////////  MOUSE  /////////////////////////
 
 // qimi is at 1bfxx
-wire qimi_sel = cpu_io && (cpu_addr[13:8] == 6'b111111);
+wire qimi_sel = cpu_io && ql_io && (cpu_addr[13:8] == 6'b111111);
 wire [7:0] qimi_data;
 wire qimi_irq;
 	
@@ -496,62 +617,133 @@ qimi qimi
 
 /////////////////  CPU  ///////////////////////////
 
-reg [1:0] ram_cfg;
-always @(posedge clk_sys) if(reset) ram_cfg <= status[5:4];
+wire ram_128 = !ram_cfg;
+wire ram_512 = ram_cfg == 2'b01;
+wire ram_768 = ram_cfg == 2'b10;
+wire ram_4k  = &ram_cfg;
 
-// address decoding
-wire cpu_act  = cpu_rd || cpu_wr;
-wire cpu_io   = cpu_act && ({cpu_addr[19:14], 2'b00} == 8'h18);   // internal IO $18000-$1bffff
-wire cpu_bram = cpu_act &&(cpu_addr[19:17] == 3'b001);           	// 128k RAM at $20000
-wire cpu_xram = cpu_act && ((|ram_cfg && ^cpu_addr[19:18]) || (ram_cfg[1] && &cpu_addr[19:18])); // ExtRAM 512k/768k
-wire cpu_ram  = cpu_bram || cpu_xram;                   				// any RAM
-wire cpu_rom  = cpu_act && (cpu_addr[19:16] == 4'h0);             // 64k ROM at $0
+wire [23:0] cpu_addr_mask =
+	ram_128? 			  24'h03FFFF:		// Wrap address space at 256kb (128KB RAM)
+	ram_512 || ram_768? 24'h0FFFFF:		// Wrap address space at 1MB (640 + 896KB RAM)
+							  24'h7FFFFF;		// Wrap address space at 8MB (4MB RAM + extended I/O space)
+
+// Address decoding
+wire cpu_rd   = cpu_as &&  cpu_rw && (cpu_uds || cpu_lds);
+wire cpu_wr   = cpu_as && !cpu_rw && (cpu_uds || cpu_lds);
+wire cpu_io   = cpu_rd || cpu_wr;
+wire ql_io    = {cpu_addr[23:14], 2'b00} == 12'h018; 							// internal IO 	$18000-$1bfff
+wire cpu_bram = cpu_addr[23:17] == 5'b00001; 	       						// 128k RAM   		$20000-$3ffff
+wire cpu_ram512 = ram_512 && !cpu_addr[23:20] && ^cpu_addr[19:18];		// ExtRAM 512k  	$40000-$bffff
+wire cpu_ram768 = ram_768 && !cpu_addr[23:20] && |cpu_addr[19:18];		// ExtRAM 768k		$40000-$fffff
+wire cpu_ram4k  = ram_4k  && !cpu_addr[23:22] && |cpu_addr[21:18];		// ExtRAM 4096k	$40000-$3fffff
+wire cpu_xram = cpu_ram512 || cpu_ram768 || cpu_ram4k;						// ExtRAM 512k/768k/4096k
+wire cpu_ram  = (cpu_bram || cpu_xram || gc_ram1 || gc_ram2);				// any RAM
+wire cpu_rom  = cpu_addr[23:16] == 8'h00;	 										// 64k     ROM $0000-$ffff
+wire cpu_ext_rom = {cpu_addr[23:14], 2'b00} == 12'h00C;						// 16k ext ROM $c000-$ffff
+wire cpu_os_rom  = cpu_rom && !cpu_ext_rom;										// 48k OS  ROM $0000-$bfff
+
+// Additional (Super)GoldCard spaces
+wire gc_io  = gc_en && ({cpu_addr[23:8]} == 16'h01C0);						// GoldCard IO $1c000-$1c0ff
+wire gc_ram1 = gc_en && {cpu_addr[23:15], 3'b000} == 12'h010;				// 32kb additional SuperGoldCard RAM $10000-$17fff
+wire gc_ram2 = gc_en && {cpu_addr[23:14], 2'b00} == 12'h01C && !gc_io; 	// 16kb additional SuperGoldCard RAM $1c100-$1ffff
+wire gc_boot_rom = gc_en && cpu_addr[23:16] == 8'h04;							// Another copy of the boot ROM $040000-$04ffff
+wire gc_os_rom = gc_en && cpu_addr[23:16] == 8'h40;							// SuperGoldCard copy of QL ROM $400000-$40ffff
+wire gc_ext_io = gc_en && {cpu_addr[23:18], 2'b00} == 8'h4c;				// SuperGoldCard extended I/O $4c0000-$4fffff
 
 wire [15:0] io_dout = 
-	qimi_sel?{qimi_data, qimi_data}:
-	(!cpu_addr[6])?zx8302_dout:
+	qimi_sel? {qimi_data, qimi_data}:
+	zx8302_sel? zx8302_dout:
 	16'h0000;	
 
-// demultiplex the various data sources
-wire [15:0] cpu_din =
-	qlsd_rd?{qlsd_dout, qlsd_dout}:    // qlsd maps into rom area
-	cpu_rom?rom_dout:
-	cpu_ram?sdram_dout:
-	cpu_io?io_dout:
+// Data bus on GC boot (shadow RAM disabled)
+wire [15:0] gc_dout_boot =
+	cpu_rom? gc_rom_dout:								// 000000..00ffff: GC ROM
+	gc_boot_rom? gc_rom_dout:							// 040000..04ffff: Another copy of GC ROM
+	gc_os_rom? ql_rom_dout:								// 400000..40ffff: Original OS ROM
+	cpu_ram? sdram_dout:
 	16'hffff;
 
-wire [31:0] cpu_addr;
-wire [1:0] cpu_ds;
+// Data bus if GC RAM shadow is enabled
+wire [15:0] gc_dout_shadow = 
+	cpu_os_rom? sdram_dout:								// 000000..007fff: Shadow-RAM
+	qlsd_rd? {qlsd_dout, qlsd_dout}:  				// 00fee4        : QL-SD maps into rom area
+	cpu_ext_rom? ql_rom_dout:							// 00c000..00ffff: EXT-ROM space
+	gc_os_rom? ql_rom_dout:								// 400000..40ffff: Original OS ROM
+	cpu_ram? sdram_dout:
+	16'hffff;
+
+// Gold Card mode data bus
+wire [15:0] gc_dout = 
+	rom_shadow? gc_dout_shadow: gc_dout_boot;
+	
+// QL mode data bus
+wire [15:0] ql_dout =
+	qlsd_rd? {qlsd_dout, qlsd_dout}:    			// 00fee4        : QL-SD maps into rom area
+	cpu_rom? ql_rom_dout:								// 000000..00ffff: OS ROM + EXT ROM
+	cpu_ram? sdram_dout:
+	16'hffff;
+
+// Bring it all together
+wire [15:0] cpu_din =
+	ql_io? io_dout:										// 18000..1bfff: Always mapped
+	gc_en? gc_dout:											// GC-mode memory spaces
+	ql_dout;													// QL-mode memory spaces
+
+wire cpu_dtack =
+	qlsd_sel? qlsd_dtack:
+	rom_shadow_read || rom_shadow_write? sdram_dtack:
+	cpu_ram? sdram_dtack:
+	1'b1;
+
+// Debugging only
+reg [23:0] cpu_addr_reg  /* synthesis noprune */;
+always @(posedge clk_sys) begin
+	cpu_addr_reg <= cpu_addr;	
+end
+
+wire [23:1] cpu_addr16;
+wire [23:0] cpu_addr = {cpu_addr16, !cpu_uds && cpu_lds} & cpu_addr_mask;
 wire [15:0] cpu_dout;
 wire [1:0] cpu_ipl;
+wire cpu_uds_n;
+wire cpu_lds_n;
+wire cpu_uds = !cpu_uds_n;
+wire cpu_lds = !cpu_lds_n;
+wire cpu_as_n;
+wire cpu_as = !cpu_as_n;
 wire cpu_rw;
-wire [1:0] cpu_busstate;
-wire cpu_rd = (cpu_busstate == 2'b00) || (cpu_busstate == 2'b10);
-wire cpu_wr = (cpu_busstate == 2'b11) && !cpu_rw;
-wire cpu_idle = (cpu_busstate == 2'b01);
+wire [2:0] cpu_fc;
+wire cpu_int_ack = &cpu_fc;
 
-reg cpu_enable;
-always @(posedge clk_sys) if(ce_bus_n) cpu_enable <= cpu_cycle || cpu_idle;
-
-TG68KdotC_Kernel #(0,0,0,0,0,0) tg68k
+fx68k fx68k
 (
-	.clk            ( clk_sys      ),
-	.nReset         ( ~reset       ),
-	.clkena_in      ( cpu_enable & ce_bus_p ), 
-	.data_in        ( cpu_din      ),
-	.IPL            ( {cpu_ipl[0], cpu_ipl }),  // ipl 0 and 2 are tied together on 68008
-	.IPL_autovector ( 1'b1         ),
-	.berr           ( 1'b0         ),
-	.clr_berr       ( 1'b0         ),
-	.CPU            ( 2'b00        ),   // 00=68000
-	.addr           ( cpu_addr     ),
-	.data_write     ( cpu_dout     ),
-	.nUDS           ( cpu_ds[1]    ),
-	.nLDS           ( cpu_ds[0]    ),
-	.nWr            ( cpu_rw       ),
-	.busstate       ( cpu_busstate ), // 00-> fetch code 10->read data 11->write data 01->no memaccess
-	.nResetOut      (              ),
-	.FC             (              )
+	.clk				( clk_sys    	),
+	.extReset		( reset			),
+	.pwrUp			( reset			),
+	.enPhi1			( ce_bus_p		),
+	.enPhi2			( ce_bus_n		),
+	
+	.eRWn				( cpu_rw 		), 
+	.ASn				( cpu_as_n		),
+	.UDSn				( cpu_uds_n		),
+	.LDSn				( cpu_lds_n		),
+	
+	.FC0				( cpu_fc[0]		),
+	.FC1				( cpu_fc[1]		),
+	.FC2				( cpu_fc[2]		),
+	
+	.BGn				(					),
+	.DTACKn			( ~cpu_dtack	),
+	.VPAn				( ~cpu_int_ack	),
+	.BERRn			( 1				),
+	.BRn				( 1				),
+	.BGACKn			( 1				),
+	.IPL0n			( cpu_ipl[0]	),
+	.IPL1n			( cpu_ipl[1]	),
+	.IPL2n			( cpu_ipl[0]	),		// ipl 0 and 2 are tied together on 68008
+	.iEdb				( cpu_din		),
+	.oEdb				( cpu_dout		),
+	.eab				( cpu_addr16	)
 );
 
 //////////////////   SD LED   ///////////////////
