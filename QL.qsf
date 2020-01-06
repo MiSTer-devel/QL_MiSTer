@@ -53,6 +53,7 @@ set_global_assignment -name SEED 1
 source sys/sys.tcl
 source sys/sys_analog.tcl
 source files.qip
+set_global_assignment -name SYSTEMVERILOG_FILE ql_timing.sv
 set_global_assignment -name SYSTEMVERILOG_FILE fx68k/uaddrPla.sv
 set_global_assignment -name SYSTEMVERILOG_FILE fx68k/fx68kAlu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE fx68k/fx68k.sv

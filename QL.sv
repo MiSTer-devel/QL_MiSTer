@@ -278,6 +278,15 @@ begin
 	ce_sd <= !divSD;							
 end
 
+//////////////// QL RAM timing ////////////////////
+
+wire ram_delay_dtack;
+
+ql_timing ql_timing(
+	.*,
+	.enable(ql_mode)
+);
+
 /////////////////  HPS  ///////////////////////////
 
 wire [31:0] status;
@@ -583,7 +592,7 @@ zx8302 zx8302
 
 	.ps2_key      ( ps2_key      ),
 	
-	.vs           ( VSync        ),
+	.vs           ( VS           ),
 
 	.mdv_reverse  ( mdv_reverse  ),
 
@@ -692,7 +701,7 @@ wire [15:0] cpu_din =
 wire cpu_dtack =
 	qlsd_sel? qlsd_dtack:
 	rom_shadow_read || rom_shadow_write? sdram_dtack:
-	cpu_ram? sdram_dtack:
+	cpu_ram? sdram_dtack && !ram_delay_dtack:
 	1'b1;
 
 // Debugging only
