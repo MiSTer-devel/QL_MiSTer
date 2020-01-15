@@ -33,10 +33,10 @@
  
 module sdram (
 	// interface to the MT48LC16M16 chip
-	inout [15:0]  		SDRAM_DQ,    	// 16 bit bidirectional data bus
+	inout reg [15:0] 	SDRAM_DQ,    	// 16 bit bidirectional data bus
 	output reg [12:0]	SDRAM_A,    	// 13 bit multiplexed address bus
-	output reg      	SDRAM_DQMH,    // two byte masks
-	output reg      	SDRAM_DQML,    // two byte masks
+	output 	      	SDRAM_DQMH,    // two byte masks
+	output 	      	SDRAM_DQML,    // two byte masks
 	output reg[1:0] 	SDRAM_BA,      // two banks
 	output 				SDRAM_nCS,     // a single chip select
 	output 				SDRAM_nWE,     // write enable
@@ -145,9 +145,7 @@ assign SDRAM_nCS  = sd_cmd[3];
 assign SDRAM_nRAS = sd_cmd[2];
 assign SDRAM_nCAS = sd_cmd[1];
 assign SDRAM_nWE  = sd_cmd[0];
-
-reg stateWrite;
-assign SDRAM_DQ = stateWrite? save_data : 16'bZZZZZZZZZZZZZZZZ;
+assign {SDRAM_DQMH,SDRAM_DQML} = SDRAM_A[12:11];	// For SDRAM v1 compatibility I assume
 
 // Address translation
 // CPU: A24 A23 A22 A21 A20 A19 A18 A17 A16 A15 A14 A13 A12 A11 A10 A09 A08 A07 A06 A05 A04 A03 A02 A01 A00
@@ -158,13 +156,15 @@ assign SDRAM_DQ = stateWrite? save_data : 16'bZZZZZZZZZZZZZZZZ;
 sd_state_t q /* synthesis noprune */;
 always @(posedge clk)
 begin
+	reg [1:0] dqm;		// Captures UDS/LDS as the DQM lines are multiplexed and can only be asserted later
+	
 	sd_cmd <= CMD_INHIBIT;
+	SDRAM_DQ <= 16'bZ;
 
 	if (reset != 0) 
 	begin		
 		// Reset sequence. Somewhat relaxed timing
 		SDRAM_BA <= 2'b00;
-		{SDRAM_DQMH, SDRAM_DQML} <= 2'b00;
 			
 		if (reset == 24)
 		begin
@@ -192,8 +192,6 @@ begin
 				// Pre-select row
 				SDRAM_A <= addr[21:9];
 				SDRAM_BA <= addr[23:22];
-				SDRAM_DQMH <= 0;						// The default is to have all bytes enabled (read mode must always be 16-bit 
-				SDRAM_DQML <= 0;						// as we cache the result)
 				
 				// Refresh has priority
 				if (refresh || doRefresh)
@@ -212,7 +210,7 @@ begin
 						dtack <= 1;						// ... aaaaaand we're done
 					end else begin
 						cache_addr <= {addr[23:9], addr[8:0] + 9'd1};	// We will cache the next word, too (wrap on row border)
-						sd_cmd <= CMD_ACTIVE;	// Activate row
+						sd_cmd <= CMD_ACTIVE;		// Activate row						
 						q <= STATE_READ_RASCAS_1;
 					end
 				end
@@ -250,7 +248,7 @@ begin
 		STATE_READ_CAS_1:
 			begin
 				dtack <= 1;								// We can assert DTACK two cycles before providing the data
-				SDRAM_A <= {4'b0010, cache_addr[8:0]};	// Select column of cache data. A10 = 1 for auto-precharge
+				SDRAM_A <= {4'b0010, cache_addr[8:0]};	// Select column of cache data. A10 = 1 for auto-precharge, A12/A11 = DQMH/DQML
 				sd_cmd <= CMD_READ;					// Start next read for 2nd halve of long-word
 				q <= STATE_READ_CAS_2;
 			end
@@ -282,11 +280,9 @@ begin
 					cache_addr <= 0;					// Byte access, just invalidate cache
 				end
 			
-				// Mask byte writes if necessary
-				SDRAM_DQMH <= !uds;					// We've already asserted dtack, these will be invalid soon
-				SDRAM_DQML <= !lds;
+				dqm <= {!uds, !lds};					// We've already asserted dtack, these will be invalid soon
 				save_data <= din;						// ... and data
-				stateWrite <= 1;						// Activate output onto SDRAM data bus				
+				SDRAM_DQ <= din;
 				q <= STATE_WRITE_RASCAS_2;			// Wait tRCD = 18ns (2 cycles up to 111Mhz)						
 			end
 			
@@ -295,7 +291,7 @@ begin
 			
 		STATE_WRITE_CMD:
 			begin
-				SDRAM_A <= {4'b0010, save_col};	// Select column of write data. A10 = 1 for auto-precharge
+				SDRAM_A <= {dqm, 2'b10, save_col};	// Select column of write data. A10 = 1 for auto-precharge, A12/A11 = DQMH/DQML
 				sd_cmd <= CMD_WRITE;
 				q <= STATE_WRITE_DELAY_1;
 			end
@@ -304,10 +300,7 @@ begin
 			q <= STATE_WRITE_DELAY_2;				// Wait tRP = 18ns for auto-precharge (2 cycles up to 111Mhz)
 			
 		STATE_WRITE_DELAY_2:		
-			begin
-				stateWrite <= 0;
-				q <= STATE_IDLE;
-			end
+			q <= STATE_IDLE;
 		endcase
 	end
 end
