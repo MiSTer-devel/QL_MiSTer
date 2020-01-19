@@ -25,7 +25,8 @@
 // Made module syncrhronous. Total code refactoring. (Sorgelig)
 // clk_spi must be at least 4 x sck for proper work.
 
-module sd_card
+// WIDE=1 for 16 bit file I/O
+module sd_card #(parameter WIDE=0)
 (
 	input         clk_sys,
 	input         reset,
@@ -38,9 +39,9 @@ module sd_card
 	input         sd_ack,
 	input         sd_ack_conf,
 
-	input   [8:0] sd_buff_addr,
-	input   [7:0] sd_buff_dout,
-	output  [7:0] sd_buff_din,
+	input  [AW:0] sd_buff_addr,
+	input  [DW:0] sd_buff_dout,
+	output [DW:0] sd_buff_din,
 	input         sd_buff_wr,
 
 	// SPI interface
@@ -51,6 +52,9 @@ module sd_card
 	input         mosi,
 	output reg    miso
 );
+
+localparam DW = (WIDE) ? 15 : 7;		// RAM data bus (hps facing)
+localparam AW = (WIDE) ?  7 : 8;		// RAM address bus (hps facing)
 
 assign sd_lba = sdhc ? lba : {9'd0, lba[31:9]};
 
@@ -75,7 +79,7 @@ localparam WR_STATE_RECV_CRC1  = 4;
 localparam WR_STATE_SEND_DRESP = 5;
 localparam WR_STATE_BUSY       = 6;
 
-sdbuf buffer
+sdbuf #(.AW(AW), .DW(DW)) buffer 
 (
 	.clock_a(clk_sys),
 	.address_a(sd_buff_addr),
@@ -467,17 +471,17 @@ end
 
 endmodule
 
-module sdbuf
+module sdbuf #(parameter AW=8, DW=7)
 (
 	input	       clock_a,
 	input	       clock_b,
-	input	 [8:0] address_a,
+	input	[AW:0] address_a,
 	input	 [8:0] address_b,
-	input	 [7:0] data_a,
+	input	[DW:0] data_a,
 	input	 [7:0] data_b,
 	input	       wren_a,
 	input	       wren_b,
-	output [7:0] q_a,
+	output[DW:0] q_a,
 	output [7:0] q_b
 );
 
@@ -516,7 +520,7 @@ defparam
 	altsyncram_component.indata_reg_b = "CLOCK1",
 	altsyncram_component.intended_device_family = "Cyclone V",
 	altsyncram_component.lpm_type = "altsyncram",
-	altsyncram_component.numwords_a = 512,
+	altsyncram_component.numwords_a = 2 ** (AW + 1),
 	altsyncram_component.numwords_b = 512,
 	altsyncram_component.operation_mode = "BIDIR_DUAL_PORT",
 	altsyncram_component.outdata_aclr_a = "NONE",
@@ -526,9 +530,9 @@ defparam
 	altsyncram_component.power_up_uninitialized = "FALSE",
 	altsyncram_component.read_during_write_mode_port_a = "NEW_DATA_NO_NBE_READ",
 	altsyncram_component.read_during_write_mode_port_b = "NEW_DATA_NO_NBE_READ",
-	altsyncram_component.widthad_a = 9,
+	altsyncram_component.widthad_a = AW + 1,
 	altsyncram_component.widthad_b = 9,
-	altsyncram_component.width_a = 8,
+	altsyncram_component.width_a = DW + 1,
 	altsyncram_component.width_b = 8,
 	altsyncram_component.width_byteena_a = 1,
 	altsyncram_component.width_byteena_b = 1,
