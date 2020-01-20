@@ -141,6 +141,7 @@ assign BUTTONS   = 0;
 parameter CONF_STR = {
 	"QL;;",
 	"-;",
+	"S,WIN;",	
 	"F,MDV;",
 	"O2,MDV direction,normal,reverse;",
 	"-;",
@@ -301,6 +302,19 @@ wire [15:0] ioctl_dout = {ioctl_data[7:0], ioctl_data[15:8]};
 wire [15:0] ioctl_data;
 reg         ioctl_wait = 0;
 
+wire [31:0] sd_lba;
+wire        sd_rd;
+wire        sd_wr;
+wire        sd_ack;
+wire  [7:0] sd_buff_addr;
+wire [15:0] sd_buff_dout;
+wire [15:0] sd_buff_din;
+wire        sd_buff_wr;
+wire        img_mounted;
+wire        img_readonly;
+wire [63:0] img_size;
+wire        sd_ack_conf;
+
 wire [24:0] ps2_mouse;
 wire [10:0] ps2_key;
 wire [32:0] TIMESTAMP;
@@ -327,6 +341,19 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.ioctl_dout(ioctl_data),
 	.ioctl_wait(ioctl_wait),
 
+	.sd_lba(sd_lba),
+	.sd_rd(sd_rd),
+	.sd_wr(sd_wr),
+	.sd_ack(sd_ack),
+	.sd_ack_conf(sd_ack_conf),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din),
+	.sd_buff_wr(sd_buff_wr),
+	.img_mounted(img_mounted),
+	.img_readonly(img_readonly),
+	.img_size(img_size),
+	
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
 
@@ -336,6 +363,34 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 
 /////////////////  SD  ////////////////////////////
 
+// SD card emulator
+reg vsd_sel = 0;
+always @(posedge clk_sys) if (img_mounted) vsd_sel <= |img_size;
+
+wire vsd_miso;
+wire sd_clk;
+wire sd_mosi;
+wire sd_miso = sd_phys_cs? vsd_miso: SD_MISO;
+wire sd_cs1, sd_cs2;
+wire sd_phys_cs = vsd_sel? sd_cs2: sd_cs1;	// Physical SD as card2 if vitual SD is enabled
+
+sd_card #(.WIDE(1)) sd_card
+(
+	.*,
+
+	.clk_spi(clk_sys),
+	.sdhc(1),
+	.sck(sd_clk),
+	.ss(sd_cs1 || ~vsd_sel),
+	.mosi(sd_mosi),
+	.miso(vsd_miso)
+);
+
+assign SD_CS   = sd_phys_cs;
+assign SD_SCK  = sd_phys_cs? 0: sd_clk;
+assign SD_MOSI = sd_phys_cs? 0: sd_mosi;
+
+// QL-SD interface
 wire qlsd_en  = (!gc_en || rom_shadow) && cpu_rom && cpu_rd;
 wire qlsd_reg = qlsd_en && (cpu_addr[15:4] == 12'hfee || cpu_addr[15:4] == 12'hfef);
 wire qlsd_rd  = qlsd_en && (cpu_addr[15:0] == 16'hfee4);  // only one register actually returns data
@@ -354,12 +409,33 @@ qlromext qlromext
 	.romoel  ( !qlsd_sel 		),
 	.a       ( cpu_addr[15:0]	),
 	.d       ( qlsd_dout       ),
-	.sd_do   ( SD_MISO         ),
-	.sd_cs1l ( SD_CS           ),
-	.sd_clk  ( SD_SCK          ),
-	.sd_di   ( SD_MOSI         ),
+	.sd_do   ( sd_miso         ),
+	.sd_cs1l ( sd_cs1          ),
+	.sd_cs2l ( sd_cs2          ),
+	.sd_clk  ( sd_clk          ),
+	.sd_di   ( sd_mosi         ),
 	.io2     ( 1'b0            )
 ); 
+
+
+// SD led
+reg sd_act;
+
+always @(posedge clk_sys) begin
+	reg old_mosi, old_miso;
+	integer timeout = 0;
+
+	old_mosi <= sd_mosi;
+	old_miso <= sd_miso;
+
+	sd_act <= 0;
+	if (timeout < 4000000) begin
+		timeout <= timeout + 1;
+		sd_act <= 1;
+	end
+
+	if ((old_mosi ^ sd_mosi) || (old_miso ^ sd_miso)) timeout <= 0;
+end
 
 /////////////////  RESET  /////////////////////////
 
@@ -754,24 +830,5 @@ fx68k fx68k
 	.oEdb				( cpu_dout		),
 	.eab				( cpu_addr16	)
 );
-
-//////////////////   SD LED   ///////////////////
-reg sd_act;
-
-always @(posedge clk_sys) begin
-	reg old_mosi, old_miso;
-	integer timeout = 0;
-
-	old_mosi <= SD_MOSI;
-	old_miso <= SD_MISO;
-
-	sd_act <= 0;
-	if(timeout < 4000000) begin
-		timeout <= timeout + 1;
-		sd_act <= 1;
-	end
-
-	if((old_mosi ^ SD_MOSI) || (old_miso ^ SD_MISO)) timeout <= 0;
-end
 
 endmodule
