@@ -131,6 +131,8 @@ typedef struct {
 
 module fx68k(
 	input clk,
+	input HALTn,					// Used for single step only. Force high if not used
+	// input logic HALTn = 1'b1,			// Not all tools support default port values
 	
 	// These two signals don't need to be registered. They are not async reset.
 	input extReset,			// External sync reset on emulated system
@@ -194,9 +196,9 @@ module fx68k(
 	//	
 	// We synchronize some signals half clock earlier. We compensate later
 	reg rDtack, rBerr;
-	reg [2:0] rIpl, iIpl;
-	reg Vpai, BeI, BRi, BgackI, BeiDelay;
-	// reg rBR;
+	reg [2:0] rIpl, iIpl;	
+	reg Vpai, BeI, Halti, BRi, BgackI, BeiDelay;
+	// reg rBR, rHALT;
 	wire BeDebounced = ~( BeI | BeiDelay);
 
 	always_ff @( posedge Clks.clk) begin
@@ -210,16 +212,20 @@ module fx68k(
 			rIpl <= ~{ IPL2n, IPL1n, IPL0n};
 			iIpl <= rIpl;
 			
-			// rBR <= BRn;			// Needed for cycle accuracy but only if BR is changed on the wrong edge of the clock
+			// Needed for cycle accuracy but only if BR or HALT are asserted on the wrong edge of the clock			
+			// rBR <= BRn;
+			// rHALT <= HALTn;
 		end
 		else if( Clks.enPhi1) begin
 			Vpai <= VPAn;
 			BeI <= rBerr;
 			BeiDelay <= BeI;
+			BgackI <= BGACKn;
 			
 			BRi <= BRn;
-			BgackI <= BGACKn;
+			Halti <= HALTn;
 			// BRi <= rBR;
+			// Halti <= rHALT;			
 		end	
 	end
 
@@ -356,7 +362,7 @@ module fx68k(
 		.rDtack, .BeDebounced, .Vpai,
 		.ASn, .LDSn, .UDSn, .eRWn);
 		
-	busArbiter busArbiter( .Clks, .BRi, .BgackI, .Halti( 1'b1), .bgBlock, .busAvail, .BGn);
+	busArbiter busArbiter( .Clks, .BRi, .BgackI, .Halti, .bgBlock, .busAvail, .BGn);
 		
 		
 	// Output reset & halt control
@@ -386,10 +392,10 @@ module fx68k(
 			rFC <= '0;
 		else if( enT1 & Nanod.permStart) begin		// S0 phase of bus cycle
 			rFC[2] <= pswS;
-			// PC relativ access is marked as FC type 'n' (0) at ucode.
+			// If FC is type 'n' (0) at ucode, access type depends on PC relative mode		
 			// We don't care about RZ in this case. Those uinstructions with RZ don't start a bus cycle.
-			rFC[1] <= microLatch[ 16] | ( ~microLatch[ 15] & ~Irdecod.isPcRel);
-			rFC[0] <= microLatch[ 15] | ( ~microLatch[ 16] & Irdecod.isPcRel);
+			rFC[1] <= microLatch[ 16] | ( ~microLatch[ 15] & Irdecod.isPcRel);
+			rFC[0] <= microLatch[ 15] | ( ~microLatch[ 16] & ~Irdecod.isPcRel);
 		end
 	end
 	
@@ -2260,7 +2266,7 @@ module busControl( input s_clks Clks, input enT1, input enT4,
 	assign UDSn = rUDS;
 	assign eRWn = rRWn;
 
-	//reg dataOe;
+	reg dataOe;
 		
 	reg bcPend;
 	reg isWriteReg, bciByte, isRmcReg, wendReg;
@@ -2349,15 +2355,15 @@ module busControl( input s_clks Clks, input enT1, input enT4,
 			rUDS <= 1'b1;
 			rLDS <= 1'b1;
 			rRWn <= 1'b1;
-			//dataOe <= '0;
+			dataOe <= '0;
 		end
 		else begin
-/*
+
 			if( Clks.enPhi2 & isWriteReg & (busPhase == S2))
 				dataOe <= 1'b1;
 			else if( Clks.enPhi1 & (busEnding | (busPhase == SIDLE)) )
 				dataOe <= 1'b0;
-*/						
+						
 			if( Clks.enPhi1 & busEnding)
 				rRWn <= 1'b1;
 			else if( Clks.enPhi1 & isWriteReg) begin

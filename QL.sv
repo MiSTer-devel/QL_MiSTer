@@ -803,6 +803,7 @@ wire cpu_int_ack = &cpu_fc;
 fx68k fx68k
 (
 	.clk				( clk_sys    	),
+	.HALTn			( 1'b1			),
 	.extReset		( reset			),
 	.pwrUp			( reset			),
 	.enPhi1			( ce_bus_p		),

@@ -310,7 +310,7 @@ module fx68kAlu ( input clk, pwrUp, enT1, enT3, enT4,
 		
 		ccrTemp[XF] = pswCcr[XF];     ccrTemp[CF] = 0;     ccrTemp[VF] = 0;	
 
-		// Not on all operators !!!
+		// Not on all operators
 		ccrTemp[ ZF] = isByte ? ~(| result[7:0]) : ~(| result);
 		ccrTemp[ NF] = isByte ? result[7] : result[15];
 
@@ -319,7 +319,8 @@ module fx68kAlu ( input clk, pwrUp, enT1, enT3, enT4,
 		OP_EXT:
 			// Division overflow.
 			if( aluColumn == 5) begin
-				ccrTemp[VF] = 1'b1;		ccrTemp[NF] = 1'b1;
+				ccrTemp[VF] = 1'b1;
+				ccrTemp[NF] = 1'b1;				ccrTemp[ ZF] = 1'b0;
 			end
 
 		OP_SUB0,				// used by NOT
@@ -821,6 +822,7 @@ module ccrTable(
 			`ALU_ROW_07:	ccrMask = KNZ00;		// MUL (originally KNZ0A)
 			`ALU_ROW_09,
 			`ALU_ROW_10:	ccrMask = KNZ00;		// RO[lr] (originally KNZ0A)
+			`ALU_ROW_08,							// ROXR (originally ANZ0A)
 			`ALU_ROW_11:	ccrMask = CUPDALL;		// ROXL (originally ANZ0A)
 			default:	ccrMask = CUNUSED;
 			endcase
