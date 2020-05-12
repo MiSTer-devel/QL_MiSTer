@@ -536,7 +536,7 @@ wire cpu_idle = (cpu_busstate == 2'b01);
 reg cpu_enable;
 always @(posedge clk_sys) if(ce_bus_n) cpu_enable <= cpu_cycle || cpu_idle;
 
-TG68KdotC_Kernel #(0,0,0,0,0,0) tg68k
+TG68KdotC_Kernel #(0,0,0,0,0,0, 0,1) tg68k
 (
 	.clk            ( clk_sys      ),
 	.nReset         ( ~reset       ),
@@ -547,7 +547,7 @@ TG68KdotC_Kernel #(0,0,0,0,0,0) tg68k
 	.berr           ( 1'b0         ),
 	.clr_berr       ( 1'b0         ),
 	.CPU            ( 2'b00        ),   // 00=68000
-	.addr           ( cpu_addr     ),
+	.addr_out       ( cpu_addr     ),
 	.data_write     ( cpu_dout     ),
 	.nUDS           ( cpu_ds[1]    ),
 	.nLDS           ( cpu_ds[0]    ),
