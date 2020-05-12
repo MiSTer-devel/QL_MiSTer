@@ -32,6 +32,7 @@ module sdram (
 	output 				SDRAM_nWE,     // write enable
 	output 				SDRAM_nRAS,    // row address select
 	output 				SDRAM_nCAS,    // columns address select
+	output 				SDRAM_CLK,
 
 	// cpu/chipset interface
 	input 		 		init,			   // init signal after FPGA config to initialize RAM
@@ -87,20 +88,19 @@ end
 // ---------------------------------------------------------------------
 
 // all possible commands
-localparam CMD_INHIBIT         = 4'b1111;
-localparam CMD_NOP             = 4'b0111;
-localparam CMD_ACTIVE          = 4'b0011;
-localparam CMD_READ            = 4'b0101;
-localparam CMD_WRITE           = 4'b0100;
-localparam CMD_BURST_TERMINATE = 4'b0110;
-localparam CMD_PRECHARGE       = 4'b0010;
-localparam CMD_AUTO_REFRESH    = 4'b0001;
-localparam CMD_LOAD_MODE       = 4'b0000;
+localparam CMD_NOP             = 3'b111;
+localparam CMD_ACTIVE          = 3'b011;
+localparam CMD_READ            = 3'b101;
+localparam CMD_WRITE           = 3'b100;
+localparam CMD_BURST_TERMINATE = 3'b110;
+localparam CMD_PRECHARGE       = 3'b010;
+localparam CMD_AUTO_REFRESH    = 3'b001;
+localparam CMD_LOAD_MODE       = 3'b000;
 
-reg [3:0] sd_cmd;   // current command sent to sd ram
+reg [2:0] sd_cmd;   // current command sent to sd ram
 
 // drive control signals according to current command
-assign SDRAM_nCS  = sd_cmd[3];
+assign SDRAM_nCS  = 0;
 assign SDRAM_nRAS = sd_cmd[2];
 assign SDRAM_nCAS = sd_cmd[1];
 assign SDRAM_nWE  = sd_cmd[0];
@@ -111,7 +111,7 @@ always @(posedge clk) begin
 	reg [1:0] dqm;
 	reg [1:0] state;
 
-	sd_cmd <= CMD_INHIBIT;
+	sd_cmd <= CMD_NOP;
 	SDRAM_DQ <= 16'bZ;
 
 	if(reset != 0) begin
@@ -149,5 +149,30 @@ always @(posedge clk) begin
 		end
 	end
 end
+
+altddio_out
+#(
+	.extend_oe_disable("OFF"),
+	.intended_device_family("Cyclone V"),
+	.invert_output("OFF"),
+	.lpm_hint("UNUSED"),
+	.lpm_type("altddio_out"),
+	.oe_reg("UNREGISTERED"),
+	.power_up_high("OFF"),
+	.width(1)
+)
+sdramclk_ddr
+(
+	.datain_h(1'b0),
+	.datain_l(1'b1),
+	.outclock(clk),
+	.dataout(SDRAM_CLK),
+	.aclr(1'b0),
+	.aset(1'b0),
+	.oe(1'b1),
+	.outclocken(1'b1),
+	.sclr(1'b0),
+	.sset(1'b0)
+);
 
 endmodule

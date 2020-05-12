@@ -170,8 +170,7 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.outclk_1(SDRAM_CLK),
-	.outclk_2(clk_11m),
+	.outclk_1(clk_11m),
 	.locked(pll_locked)
 );
 
@@ -227,6 +226,7 @@ wire [10:0] ps2_key;
 wire [32:0] TIMESTAMP;
 
 wire        forced_scandoubler;
+wire [21:0] gamma_bus;
 
 hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
@@ -238,6 +238,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.buttons(buttons),
 	.status(status),
 	.forced_scandoubler(forced_scandoubler),
+	.gamma_bus(gamma_bus),
 	
 	.TIMESTAMP(TIMESTAMP),
 
@@ -364,9 +365,11 @@ assign VGA_F1 = 0;
 
 assign CLK_VIDEO = clk_sys;
 
-video_mixer #(.HALF_DEPTH(1)) video_mixer
+video_mixer #(.HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
 	.*,
+
+	.clk_vid(CLK_VIDEO),
 	.ce_pix(ce_pix),
 	.ce_pix_out(CE_PIXEL),
 	
