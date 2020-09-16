@@ -42,6 +42,7 @@ module sdram (
 	output 				SDRAM_nWE,     // write enable
 	output 				SDRAM_nRAS,    // row address select
 	output 				SDRAM_nCAS,    // columns address select
+	output				SDRAM_CLK,
 
 	// cpu/chipset interface
 	input 		 		init,				// init signal after FPGA config to initialize RAM
@@ -91,7 +92,6 @@ typedef enum reg [3:0] {
 
 reg doRefresh;
 reg [8:0]  save_col;
-reg [15:0] save_data;
 reg [23:0] cache_addr /* synthesis noprune */;
 reg [15:0] cache_data /* synthesis noprune */;
 
@@ -281,7 +281,6 @@ begin
 				end
 			
 				dqm <= {!uds, !lds};					// We've already asserted dtack, these will be invalid soon
-				save_data <= din;						// ... and data
 				SDRAM_DQ <= din;
 				q <= STATE_WRITE_RASCAS_2;			// Wait tRCD = 18ns (2 cycles up to 111Mhz)						
 			end
@@ -304,5 +303,30 @@ begin
 		endcase
 	end
 end
+
+altddio_out
+#(
+	.extend_oe_disable("OFF"),
+	.intended_device_family("Cyclone V"),
+	.invert_output("OFF"),
+	.lpm_hint("UNUSED"),
+	.lpm_type("altddio_out"),
+	.oe_reg("UNREGISTERED"),
+	.power_up_high("OFF"),
+	.width(1)
+)
+sdramclk_ddr
+(
+	.datain_h(1'b0),
+	.datain_l(1'b1),
+	.outclock(clk),
+	.dataout(SDRAM_CLK),
+	.aclr(1'b0),
+	.aset(1'b0),
+	.oe(1'b1),
+	.outclocken(1'b1),
+	.sclr(1'b0),
+	.sset(1'b0)
+);
 
 endmodule

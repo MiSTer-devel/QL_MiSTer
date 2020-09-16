@@ -181,8 +181,7 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),						// System clock
-	.outclk_1(SDRAM_CLK),					// SDRAM clock, phase shifted by -4.365ns
-	.outclk_2(clk_11m),						// Clock for 8049 IPC
+	.outclk_1(clk_11m),						// Clock for 8049 IPC
 	.locked(pll_locked)
 );
 
@@ -320,6 +319,7 @@ wire [10:0] ps2_key;
 wire [32:0] TIMESTAMP;
 
 wire        forced_scandoubler;
+wire [21:0] gamma_bus;
 
 hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 (
@@ -331,6 +331,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.buttons(buttons),
 	.status(status),
 	.forced_scandoubler(forced_scandoubler),
+	.gamma_bus(gamma_bus),
 	
 	.TIMESTAMP(TIMESTAMP),
 
@@ -387,8 +388,8 @@ sd_card #(.WIDE(1)) sd_card
 );
 
 assign SD_CS   = sd_phys_cs;
-assign SD_SCK  = sd_phys_cs? 0: sd_clk;
-assign SD_MOSI = sd_phys_cs? 0: sd_mosi;
+assign SD_SCK  = sd_phys_cs? 1'd0: sd_clk;
+assign SD_MOSI = sd_phys_cs? 1'd0: sd_mosi;
 
 // QL-SD interface
 wire qlsd_en  = (!gc_en || rom_shadow) && cpu_rom && cpu_rd;
@@ -562,9 +563,10 @@ assign VGA_F1 = 0;
 
 assign CLK_VIDEO = clk_sys;
 
-video_mixer #(.HALF_DEPTH(1)) video_mixer
+video_mixer #(.HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
 	.*,
+	.clk_vid(CLK_VIDEO),
 	.ce_pix(ce_pix),
 	.ce_pix_out(CE_PIXEL),
 	
