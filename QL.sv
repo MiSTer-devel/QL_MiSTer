@@ -141,9 +141,10 @@ assign BUTTONS   = 0;
 parameter CONF_STR = {
 	"QL;;",
 	"-;",
-	"S,WIN;",	
-	"F,MDV;",
+	"S,WIN,Mount HD image;",	
+	"F,MDV,Load MDV image;",
 	"O2,MDV direction,normal,reverse;",
+	"F,ROM,Load OS;",
 	"-;",
 	"O3,Video mode,PAL,NTSC;",
 	"O1,Aspect ratio,4:3,16:9;",
@@ -151,13 +152,16 @@ parameter CONF_STR = {
 	"-;",
 	"O78,CPU speed,QL,16 Mhz,24 Mhz,Full;",
 	"O45,RAM,128k,640k,896k,4096k;",
-	"T6,Reset & unload MDV;",
+	"R0,Reset & unload MDV;",
 	"V,v",`BUILD_DATE
 };
 
+parameter MDV_IOCTL_INDEX = 8'd2;
+parameter ROM_IOCTL_INDEX = 8'd4;
+
 wire mdv_reverse = status[2];
 wire ntsc_mode = status[3];
-wire osd_reset = status[6];
+wire osd_reset = status[0];
 wire [1:0] cpu_speed = status[8:7];
 wire [1:0] scale = status[10:9];
 wire ql_mode = cpu_speed == 2'b00;
@@ -443,7 +447,7 @@ end
 reg [11:0] reset_cnt;
 wire reset = (reset_cnt != 0);
 always @(posedge clk_sys) begin
-	if(RESET || buttons[1] || status[0] || !pll_locked || rom_download)
+	if(RESET || buttons[1] || osd_reset || !pll_locked || rom_download)
 		reset_cnt <= 12'hfff;
 	else if(ce_bus_p && reset_cnt != 0)
 		reset_cnt <= reset_cnt - 1'd1;
@@ -503,8 +507,8 @@ end
 
 //////////////////  ROM  //////////////////////////
 
-wire rom_download = ioctl_download && !ioctl_index;
-wire rom_ioctl_write = ioctl_wr && !ioctl_index;
+wire rom_download = ioctl_download && (!ioctl_index || ioctl_index == ROM_IOCTL_INDEX);
+wire rom_ioctl_write = ioctl_wr && (!ioctl_index || ioctl_index == ROM_IOCTL_INDEX);
 
 wire [15:0] ql_rom_dout;
 dpram #(15) ql_rom
@@ -627,7 +631,7 @@ wire zx8302_sel = cpu_io && ql_io && !cpu_addr[6];
 wire [1:0] zx8302_addr = {cpu_addr[5], cpu_addr[1]};
 wire [15:0] zx8302_dout;
 
-wire mdv_download = (ioctl_index == 1) && ioctl_download;
+wire mdv_download = (ioctl_index == MDV_IOCTL_INDEX) && ioctl_download;
 
 wire audio;
 assign AUDIO_L = {15{audio}};
@@ -640,7 +644,7 @@ wire mdv_led;
 zx8302 zx8302
 (
 	.reset        ( reset        ),
-	.reset_mdv    ( status[0]    ),
+	.reset_mdv    ( osd_reset    ),
 	.clk          ( clk_sys      ),
 	.clk11        ( clk_11m      ),
 
