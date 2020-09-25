@@ -22,8 +22,8 @@
 
 module mdv
 (
-   input        clk,   // 21mhz clock
-   input        ce,
+   input        clk,   			// System clock (84mHz)
+   input        ce,				// CPU clock
 	input        reset,
 	
 	input        reverse,
@@ -98,7 +98,7 @@ reg mdv_gap;
 
 // microdrive clock runs at 200khz
 // -> new word required every 80us
-localparam mdv_clk_scaler = 2625000/(200000)-1;
+localparam mdv_clk_scaler = 7500000/(200000)-1;
 
 always @(posedge clk) begin
 	reg [9:0] mdv_gap_cnt;
