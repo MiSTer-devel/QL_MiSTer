@@ -176,7 +176,6 @@ always @(posedge clk_sys) if (reset) ram_cfg <= status[5:4];
 
 /////////////////  CLOCKS  ////////////////////////
 
-wire clk_11m;
 wire clk_sys;
 wire pll_locked;
 
@@ -185,106 +184,100 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),						// System clock
-	.outclk_1(clk_11m),						// Clock for 8049 IPC
 	.locked(pll_locked)
 );
 
-// 84Mhz sys_clk
-parameter DIV_BUS_QL = 4'd11;				// 84Mhz / 11 = 7.64Mhz
-parameter DIV_BUS_16 = 4'd5;				// 84Mhz / 5 = 16.8Mhz
-parameter DIV_BUS_24 = 4'd3;				// 84Mhz / 3 = 21.5Mhz
-parameter DIV_BUS_FULL = 4'd2;			// 84Mhz / 2 = 42Mhz
+// 84MHz sys_clk
+parameter FRACT_BUS_QL = 17'd11702;		// 84MHz * 11702 / 65536 = 14.999MHz
+parameter FRACT_BUS_16 = 17'd24966;		// 84MHz * 24966 / 65536 = 31.999MHz
+parameter FRACT_BUS_24 = 17'd37449;		// 84MHz * 37449 / 65536 = 48.000MHz
+parameter FRACT_BUS_FULL = 17'h10000;	// 84MHz
 
-parameter DIV_131k = 10'd640;				// 84Mhz / 640 = 131250Hz
-parameter DIV_VID = 4'd8;					// 84Mhz / 8 = 10.5Mhz
-parameter DIV_SD = 3'd2;					// 84Mhz / 2 = 42Mhz (effectively 21Mhz SPI speed)
+parameter FRACT_SD = 17'd19505;			// 84MHz * 39010 / 65536 = 50Mhz (effectively 25Mhz SPI speed)
+parameter FRACT_11M = 17'd8582;			// 84MHz * 8582 / 65536 = 10.999Mhz
+parameter DIV_131k = 10'd640;				// 84MHz / 640 = 131250Hz
+parameter DIV_VID = 4'd8;					// 84MHz / 8 = 10.5MHz
 
-// 94.5Mhz sys_clk
-/*parameter DIV_BUS_QL = 4'd13;				// 94.5Mhz / 13 = 7.27Mhz
-parameter DIV_BUS_16 = 4'd6;				// 94.5Mhz / 6 = 15.75Mhz
-parameter DIV_BUS_24 = 4'd4;				// 94.5Mhz / 4 = 23.625Mhz
-parameter DIV_BUS_FULL = 4'd2;			// 94.5Mhz / 2 = 47.25Mhz
+// 94.5MHz sys_clk
+/*parameter FRACT_BUS_QL = 17'd11702;		// 94.5MHz * 10403 / 65536 = 15.000MHz
+parameter FRACT_BUS_16 = 17'd24966;		// 94.5MHz * 22192 / 65536 = 31.999MHz
+parameter FRACT_BUS_24 = 17'd37449;		// 94.5MHz * 33288 / 65536 = 48.000MHz
+parameter FRACT_BUS_FULL = 17'h10000;	// 94.5MHz
 
-parameter DIV_131k = 10'd720;				// 94.5Mhz / 720 = 131250Hz
-parameter DIV_VID = 4'd9;					// 94.5Mhz / 9 = 10.5Mhz
-parameter DIV_SD = 3'd2;					// 94.5Mhz / 2 = 47.25Mhz (effectively 23.625Mhz SPI speed)*/
+parameter FRACT_SD = 17'd19505;			// 94.5MHz * 34675 / 65536 = 49.999MHz (effectively 25Mhz SPI speed)
+parameter FRACT_11M = 17'd8582;			// 94.5MHz * 7629 / 65536 = 11.001MHz
+parameter DIV_131k = 10'd720;				// 94.5MHz / 720 = 131250Hz
+parameter DIV_VID = 4'd9;					// 94.5MHz / 9 = 10.5MHz*/
 
-// 105Mhz sys_clk
-/*parameter DIV_BUS_QL = 4'd14;				// 105Mhz / 14 = 7.5Mhz
-parameter DIV_BUS_16 = 4'd7;				// 105Mhz / 7 = 15Mhz
-parameter DIV_BUS_24 = 4'd4;				// 105Mhz / 4 = 26.25Mhz
-parameter DIV_BUS_FULL = 4'd2;			// 105Mhz / 2 = 52.5Mhz
+// 105MHz sys_clk
+/*parameter FRACT_BUS_QL = 17'd11702;		// 105MHz * 9362 / 65536 = 14.999MHz
+parameter FRACT_BUS_16 = 17'd24966;		// 105MHz * 19973 / 65536 = 32.000MHz
+parameter FRACT_BUS_24 = 17'd37449;		// 105MHz * 29959 / 65536 = 47.999MHz
+parameter FRACT_BUS_FULL = 17'h10000;	// 105MHz
 
-parameter DIV_131k = 10'd800;				// 105Mhz / 800 = 131250Hz
-parameter DIV_VID = 4'd10;					// 105Mhz / 10 = 10.5Mhz
-parameter DIV_SD = 3'd3;					// 105Mhz / 3 = 35hz (effectively 17.5Mhz SPI speed)*/
+parameter FRACT_SD = 17'd19505;			// 105MHz * 31208 / 65536 = 50.000MHz (effectively 25Mhz SPI speed)
+parameter FRACT_11M = 17'd8582;			// 105MHz * 6866 / 65536 = 11.001MHz
+parameter DIV_131k = 10'd800;				// 105MHz / 800 = 131250Hz
+parameter DIV_VID = 4'd10;					// 105MHz / 10 = 10.5MHz*/
 
+wire [16:0] fract_bus = 
+	cpu_speed == 0? FRACT_BUS_QL:
+	cpu_speed == 1? FRACT_BUS_16:
+	cpu_speed == 2? FRACT_BUS_24:
+	FRACT_BUS_FULL;
 
 reg ce_bus_p, ce_bus_n;
 reg ce_131k;									// Supposed to be 131025 Hz for SDRAM refresh and clock update
 reg ce_vid;										// 10.5Mhz pixel clock
 reg ce_sd;										// ~50 Mhz SD clock
+reg ce_11m;
 
 always @(negedge clk_sys)
 begin
-	reg [3:0] divBus;
+	reg bus_pol;
+	reg bus_tick;
+	reg [15:0] cnt_bus;
+	reg [15:0] cnt_sd;
+	reg [15:0] cnt_11m;
 	reg [9:0] div131k;
 	reg [3:0] divVid;
-	reg [2:0] divSD;
 
 	if (reset) 
 	begin
-		divBus <= 0;
+		bus_pol <= 0;
+		cnt_bus <= 0;
 		div131k <= 0;
 		divVid <= 0;
-		divSD <= 0;
 	end else begin	
-		divBus <= divBus + 4'd1;
 		div131k<= div131k + 10'd1;
 		divVid <= divVid + 4'd1;
-		divSD  <= divSD + 3'd1;
-	end
-	
-	ce_bus_p <= divBus == 0;
-	case (cpu_speed)
-	0:	begin
-			// Original QL speed
-			if (divBus == DIV_BUS_QL - 1) divBus <= 0;
-			ce_bus_n <= divBus == DIV_BUS_QL / 2;
 		end
+	
+	// CPU clock
+	{bus_tick, cnt_bus} <= cnt_bus + fract_bus;
+	ce_bus_p <= bus_tick && !bus_pol;
+	ce_bus_n <= bus_tick && bus_pol;
+	bus_pol <= bus_tick ^ bus_pol; 
 
-	1: begin
-			// Gold Card 16Mhz
-			if (divBus == DIV_BUS_16 - 1) divBus <= 0;	
-			ce_bus_n <= divBus == DIV_BUS_16 / 2;
-		end
-	
-	2: begin
-			// Gold Card 24Mhz
-			if (divBus == DIV_BUS_24 - 1) divBus <= 0;	
-			ce_bus_n <= divBus == DIV_BUS_24 / 2;
-		end
-	
-	3: begin
-			// Full speed
-			if (divBus == DIV_BUS_FULL - 1) divBus <= 0;	
-			ce_bus_n <= divBus == DIV_BUS_FULL / 2;
-		end
-	endcase
-
+	// SDRAM refresh and clock update	
 	if (div131k == DIV_131k - 1) div131k <= 0;
 	ce_131k <= !div131k;						
 		
+	// 10.5Mhz pixel clock
 	if (divVid == DIV_VID - 1) divVid <= 0;	
 	ce_vid <= !divVid;
 	
-	if (divSD == DIV_SD - 1) divSD <= 0;
-	ce_sd <= !divSD;							
+	// QL-SD clock
+	{ce_sd, cnt_sd} <= cnt_sd + FRACT_SD;
+	
+	// 11Mhz IPC clock
+	{ce_11m, cnt_11m} <= cnt_11m + FRACT_11M;
 end
 
 //////////////// QL RAM timing ////////////////////
 
 wire ram_delay_dtack;
+wire rom_delay_dtack;
 
 ql_timing ql_timing(
 	.*,
@@ -646,7 +639,7 @@ zx8302 zx8302
 	.reset        ( reset        ),
 	.reset_mdv    ( osd_reset    ),
 	.clk          ( clk_sys      ),
-	.clk11        ( clk_11m      ),
+	.ce_11m       ( ce_11m       ),
 
 	.xint         ( qimi_irq     ),
 	.ipl          ( cpu_ipl      ),

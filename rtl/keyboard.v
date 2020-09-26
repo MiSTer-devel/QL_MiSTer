@@ -22,6 +22,7 @@
 
 module keyboard ( 
 	input clk,
+   input ce_11m,
 	input reset,
 
 	// ps2 interface	
@@ -59,11 +60,11 @@ wire x_f3    = specialD[9] || js0[0];
 wire x_f4    = specialD[10]|| js0[3];
 wire x_f5    = specialD[11]|| js0[4];
 
-// divide 11mhz clock down to ~1khz some delay
-wire clk_delay = clk_delay_cnt[9];
-reg [9:0] clk_delay_cnt;  // 11mhz/1024
+// Divide 11MHz clock down to ~1khz some delay
+wire clk_delay = clk_delay_cnt[12];
+reg [12:0] clk_delay_cnt;  // 11MHz / 8192 = 1.342kHz
 always @(posedge clk)
-	clk_delay_cnt <= clk_delay_cnt + 10'd1;
+	if (ce_11m) clk_delay_cnt <= clk_delay_cnt + 13'd1;
 
 // The "main" key of a combined modifier key needs to be delayed. Otherwise
 // the QL will not accept it. E.g. when pressing CTRL-LEFT, the CTRL key needs
@@ -95,7 +96,7 @@ wire [63:0] special_matrix = {
 	2'b00, x_f5, x_f3, x_f2, 1'b0, x_f1, x_f4
 };
 
-// ================================= leyout =============================
+// ================================= layout =============================
 // F1     ESC  1   2   3   4   5   6   7   8   9   0   -   =   £   \
 // F2     TAB    Q   W   E   R   T   Y   U   I   O   P   [   ]
 // F3     CAPS    A   S   D   F   G   H   J   K   L   ;   '      ENTER

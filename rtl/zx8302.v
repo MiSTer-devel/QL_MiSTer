@@ -23,7 +23,7 @@
 module zx8302
 (
 		input          clk,
-		input          clk11,     // 11 MHz ipc
+		input          ce_11m,    	// 11 MHz ipc
       input          reset,
       input          reset_mdv,
 		
@@ -179,7 +179,8 @@ wire [1:0] ipc_ipl;
 
 ipc ipc (	
 	.reset    	    ( reset          ),
-	.clk11          ( clk11          ),
+	.clk				 ( clk            ),
+	.ce_11m         ( ce_11m         ),
 
 	.comctrl        ( ipc_comctrl    ),
 	.comdata_in     ( ipc_comdata_in ),
