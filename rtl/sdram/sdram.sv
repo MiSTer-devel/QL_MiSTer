@@ -95,7 +95,7 @@ reg [8:0]  save_col;
 reg [23:0] cache_addr /* synthesis noprune */;
 reg [15:0] cache_data /* synthesis noprune */;
 
-localparam REFRESH_CYCLES = 7;		// tRFC = 60ns = 6 cycles @ 94.5Mhz
+localparam REFRESH_CYCLES = 6;		// tRFC = 60ns = 5 cycles @ 80Mhz
 
 task doWait(input [7:0] cycles, input sd_state_t state);
 	begin
@@ -107,6 +107,8 @@ endtask
 	
 reg [7:0] waitCycles;
 sd_state_t waitState;
+
+reg has_started;
 
 // ---------------------------------------------------------------------
 // --------------------------- startup/reset ---------------------------
@@ -165,6 +167,8 @@ begin
 	begin		
 		// Reset sequence. Somewhat relaxed timing
 		SDRAM_BA <= 2'b00;
+		has_started <= 0;
+		dtack <= 1;
 			
 		if (reset == 24)
 		begin
@@ -182,7 +186,7 @@ begin
 			q <= STATE_IDLE;
 		end
 	end else begin
-		if (!we && !oe) dtack <= 0;				// Memory access is over, release dtack
+		if (!we && !oe) has_started <= 0;				// Memory access is over, release dtack
 		
 		if (refresh) doRefresh <= 1;				// Remember to do refresh the next time we're ready
 
@@ -202,23 +206,24 @@ begin
 
 					doWait(REFRESH_CYCLES, STATE_IDLE);	// Continue to idle after wait
 				end
-				else if (oe && !dtack)
+				else if (oe && !has_started)
 				begin
 					if (addr == cache_addr)
 					begin
 						dout <= cache_data;			// We can satisfy the read from cache, cool
-						dtack <= 1;						// ... aaaaaand we're done
+						has_started <= 1;						// ... aaaaaand we're done
 					end else begin
 						cache_addr <= {addr[23:9], addr[8:0] + 9'd1};	// We will cache the next word, too (wrap on row border)
 						sd_cmd <= CMD_ACTIVE;		// Activate row						
 						q <= STATE_READ_RASCAS_1;
+						dtack <= 0;
 					end
 				end
-				else if (we && !dtack)
+				else if (we && !has_started)
 				begin
 					save_col <= addr[8:0];			// Save column
 
-					dtack <= 1;							// ... so CPU can continue without any waitstates
+					has_started <= 1;							// ... so CPU can continue without any waitstates
 					sd_cmd <= CMD_ACTIVE;			// Activate row
 					q <= STATE_WRITE_RASCAS_1;
 				end

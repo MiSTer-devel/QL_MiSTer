@@ -277,7 +277,6 @@ end
 //////////////// QL RAM timing ////////////////////
 
 wire ram_delay_dtack;
-wire rom_delay_dtack;
 
 ql_timing ql_timing(
 	.*,
@@ -773,11 +772,8 @@ wire [15:0] cpu_din =
 	gc_en? gc_dout:											// GC-mode memory spaces
 	ql_dout;													// QL-mode memory spaces
 
-wire cpu_dtack =
-	qlsd_sel? qlsd_dtack:
-	rom_shadow_read || rom_shadow_write? sdram_dtack:
-	cpu_ram? sdram_dtack && !ram_delay_dtack:
-	1'b1;
+	
+wire cpu_dtack = sdram_dtack && !ram_delay_dtack;
 
 // Debugging only
 reg [23:0] cpu_addr_reg  /* synthesis noprune */;

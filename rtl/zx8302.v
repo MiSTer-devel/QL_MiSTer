@@ -5,6 +5,7 @@
 // https://github.com/mist-devel
 // 
 // Copyright (c) 2015 Till Harbaum <till@harbaum.org> 
+// Copyright (c) 2021 Daniele Terdina
 // 
 // This source file is free software: you can redistribute it and/or modify 
 // it under the terms of the GNU General Public License as published 
@@ -67,20 +68,35 @@ module zx8302
 		
 );
 
+
+// comdata shift register
+wire ipc_comdata_in = comdata_reg[0];
+reg [3:0] comdata_reg /* synthesis noprune */;
+reg [1:0] ipc_busy;
+reg comdata_to_cpu;
+reg prev_ipc_comctrl;
+
+
 // ---------------------------------------------------------------------------------
 // ----------------------------- CPU register write --------------------------------
 // ---------------------------------------------------------------------------------
 
 reg [7:0] mctrl;
 
-reg ipc_write;
-reg [3:0] ipc_write_data;
 
-// cpu is writing io registers
+// Handles:
+// 1. CPU is writing to registers
+// 2. reset
+// 3. comctrl from IPC
+
 always @(posedge clk) begin
-	if(cen) begin
+	if (reset) begin
+		comdata_reg <= 4'b0000;
+		ipc_busy <= 2'b11;
+	end
+	else if(cen) begin
 		irq_ack <= 5'd0;
-		ipc_write <= 1'b0;
+
 
 		// cpu writes to 0x18XXX area
 		if(cpu_sel && cpu_wr) begin
@@ -101,8 +117,8 @@ always @(posedge clk) begin
 					// D = data bit (0/1)
 					// E = stop bit (should be 1)
 					// X = extra stopbit (should be 1)
-					ipc_write <= 1'b1;
-					ipc_write_data <= cpu_din[3:0];
+					comdata_reg <= cpu_din[3:0];
+					ipc_busy <= 2'b11;		// Show IPC BUSY until the IPC asserts COMCTL twice
 				end
 
 				// cpu writes interrupt register
@@ -113,6 +129,12 @@ always @(posedge clk) begin
 			end
 		end
 	end
+	if (!ipc_comctrl && prev_ipc_comctrl) begin
+		comdata_to_cpu <= zx8302_comdata_in;	// Latch COMDATA since the IPC will quickly reset it to 1 when sending data
+		comdata_reg <= { 1'b1, comdata_reg[3:1] };
+		ipc_busy <= { 1'b0, ipc_busy[1] };
+	end
+	prev_ipc_comctrl <= ipc_comctrl;
 end
 
 // ---------------------------------------------------------------------------------
@@ -129,7 +151,7 @@ end
 // bit 6       IPC busy
 // bit 7       COMDATA
 
-wire [7:0] io_status = { zx8302_comdata_in, ipc_busy, 2'b00,
+wire [7:0] io_status = { comdata_to_cpu, ipc_busy[0], 2'b00,
 		mdv_gap, mdv_rx_ready, mdv_tx_empty, 1'b0 };
 
 assign cpu_dout =
@@ -150,30 +172,11 @@ assign cpu_dout =
 wire ipc_comctrl;
 wire ipc_comdata_out;
 
+
 // 8302 sees its own comdata as well as the one from the ipc
 wire zx8302_comdata_in = ipc_comdata_in && ipc_comdata_out;
 
-// comdata shift register
-wire ipc_comdata_in = comdata_reg[0];
-reg [3:0] comdata_reg /* synthesis noprune */;
-reg [1:0] comdata_cnt /* synthesis noprune */; 
 
-always @(negedge ipc_comctrl or posedge reset or posedge ipc_write) begin
-	if(reset) begin
-		comdata_reg <= 4'b0000;
-		comdata_cnt <= 2'd0;
-	end else if(ipc_write) begin
-		comdata_reg <= ipc_write_data;
-		comdata_cnt <= 2'd2;
-	end else begin
-		comdata_reg <= { 1'b0, comdata_reg[3:1] };
-		if(comdata_cnt != 0)
-			comdata_cnt <= comdata_cnt - 2'd1;
-	end
-end
-
-// comdata is busy until two bits have been shifted out
-wire ipc_busy = (comdata_cnt != 0);
 
 wire [1:0] ipc_ipl;
 
