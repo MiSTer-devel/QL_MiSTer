@@ -199,24 +199,24 @@ parameter DIV_131k = 10'd640;				// 84MHz / 640 = 131250Hz
 parameter DIV_VID = 4'd8;					// 84MHz / 8 = 10.5MHz
 
 // 94.5MHz sys_clk
-/*parameter FRACT_BUS_QL = 17'd11702;		// 94.5MHz * 10403 / 65536 = 15.000MHz
-parameter FRACT_BUS_16 = 17'd24966;		// 94.5MHz * 22192 / 65536 = 31.999MHz
-parameter FRACT_BUS_24 = 17'd37449;		// 94.5MHz * 33288 / 65536 = 48.000MHz
+/*parameter FRACT_BUS_QL = 17'd10403;		// 94.5MHz * 10403 / 65536 = 15.000MHz
+parameter FRACT_BUS_16 = 17'd22192;		// 94.5MHz * 22192 / 65536 = 31.999MHz
+parameter FRACT_BUS_24 = 17'd33288;		// 94.5MHz * 33288 / 65536 = 48.000MHz
 parameter FRACT_BUS_FULL = 17'h10000;	// 94.5MHz
 
-parameter FRACT_SD = 17'd19505;			// 94.5MHz * 34675 / 65536 = 49.999MHz (effectively 25Mhz SPI speed)
-parameter FRACT_11M = 17'd8582;			// 94.5MHz * 7629 / 65536 = 11.001MHz
+parameter FRACT_SD = 17'd34675;			// 94.5MHz * 34675 / 65536 = 49.999MHz (effectively 25Mhz SPI speed)
+parameter FRACT_11M = 17'd7629;			// 94.5MHz * 7629 / 65536 = 11.001MHz
 parameter DIV_131k = 10'd720;				// 94.5MHz / 720 = 131250Hz
 parameter DIV_VID = 4'd9;					// 94.5MHz / 9 = 10.5MHz*/
 
 // 105MHz sys_clk
-/*parameter FRACT_BUS_QL = 17'd11702;		// 105MHz * 9362 / 65536 = 14.999MHz
-parameter FRACT_BUS_16 = 17'd24966;		// 105MHz * 19973 / 65536 = 32.000MHz
-parameter FRACT_BUS_24 = 17'd37449;		// 105MHz * 29959 / 65536 = 47.999MHz
+/*parameter FRACT_BUS_QL = 17'd9362;		// 105MHz * 9362 / 65536 = 14.999MHz
+parameter FRACT_BUS_16 = 17'd19973;		// 105MHz * 19973 / 65536 = 32.000MHz
+parameter FRACT_BUS_24 = 17'd29959;		// 105MHz * 29959 / 65536 = 47.999MHz
 parameter FRACT_BUS_FULL = 17'h10000;	// 105MHz
 
-parameter FRACT_SD = 17'd19505;			// 105MHz * 31208 / 65536 = 50.000MHz (effectively 25Mhz SPI speed)
-parameter FRACT_11M = 17'd8582;			// 105MHz * 6866 / 65536 = 11.001MHz
+parameter FRACT_SD = 17'd31208;			// 105MHz * 31208 / 65536 = 50.000MHz (effectively 25Mhz SPI speed)
+parameter FRACT_11M = 17'd6866;			// 105MHz * 6866 / 65536 = 11.001MHz
 parameter DIV_131k = 10'd800;				// 105MHz / 800 = 131250Hz
 parameter DIV_VID = 4'd10;					// 105MHz / 10 = 10.5MHz*/
 
