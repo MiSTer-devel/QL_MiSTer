@@ -41,8 +41,9 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output [11:0] VIDEO_ARX,
-	output [11:0] VIDEO_ARY,
+	//if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
+	output [12:0] VIDEO_ARX,
+	output [12:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -53,6 +54,9 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+
+	input  [11:0] HDMI_WIDTH,
+	input  [11:0] HDMI_HEIGHT,
 
 `ifdef USE_FB
 	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
@@ -183,9 +187,17 @@ assign BUTTONS   = 0;
 assign VGA_SCALER= 0;
 
 wire [1:0] ar = status[12:11];
-
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
+video_freak video_freak
+(
+	.*,
+	.VGA_DE_IN(VGA_DE),
+	.VGA_DE(),
+	.ARX((!ar) ? 12'd4 : (ar - 1'd1)),
+	.ARY((!ar) ? 12'd3 : 12'd0),
+	.CROP_SIZE(0),
+	.CROP_OFF(0),
+	.SCALE(status[14:13])
+);
 
 `include "build_id.v" 
 parameter CONF_STR = {
@@ -197,6 +209,7 @@ parameter CONF_STR = {
 	"O3,Video mode,PAL,NTSC;",
 	"OBC,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O9A,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
+	"ODE,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"-;",
 	"O78,CPU speed,Normal,x2,x4;",
 	"O45,RAM,128k,640k,896k;",
@@ -229,7 +242,7 @@ reg ce_sd;
 reg duty_cycle;
 reg sub_cycle;
 reg ce_131k;
-always @(negedge clk_sys) begin
+always @(posedge clk_sys) begin
 	reg [4:0] div;
 	reg [9:0] div131k;
 	
@@ -417,16 +430,9 @@ assign CLK_VIDEO = clk_sys;
 video_mixer #(.HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
 	.*,
-
-	.clk_vid(CLK_VIDEO),
-	.ce_pix(ce_pix),
-	.ce_pix_out(CE_PIXEL),
-	
-	.scanlines(0),
 	.scandoubler(scale || forced_scandoubler),
 	.hq2x(scale==1),
-	.mono(0),
-
+	
 	.R({4{video_r}}),
 	.G({4{video_g}}),
 	.B({4{video_b}})
