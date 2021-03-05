@@ -80,13 +80,14 @@ typedef enum reg [3:0] {
 	STATE_READ_CMD				= 4'd4,
 	STATE_READ_CAS_1  		= 4'd5,
 	STATE_READ_CAS_2  		= 4'd6,
-	STATE_READ_DATA_1 		= 4'd7,
-	STATE_READ_DATA_2 		= 4'd8,
-	STATE_WRITE_RASCAS_1		= 4'd9,
-	STATE_WRITE_RASCAS_2		= 4'd10,
-	STATE_WRITE_CMD			= 4'd11,
-	STATE_WRITE_DELAY_1		= 4'd12,
-	STATE_WRITE_DELAY_2		= 4'd13
+	STATE_READ_DELAY 	 		= 4'd7,
+	STATE_READ_DATA_1 		= 4'd8,
+	STATE_READ_DATA_2 		= 4'd9,
+	STATE_WRITE_RASCAS_1		= 4'd10,
+	STATE_WRITE_RASCAS_2		= 4'd11,
+	STATE_WRITE_CMD			= 4'd12,
+	STATE_WRITE_DELAY_1		= 4'd13,
+	STATE_WRITE_DELAY_2		= 4'd14
 } sd_state_t;
 
 
@@ -141,7 +142,7 @@ typedef enum reg [3:0] {
 sd_cmd_t sd_cmd;   // current command sent to sd ram
 
 // drive control signals according to current command
-assign SDRAM_nCS  = sd_cmd[3];
+assign SDRAM_nCS  = 0;
 assign SDRAM_nRAS = sd_cmd[2];
 assign SDRAM_nCAS = sd_cmd[1];
 assign SDRAM_nWE  = sd_cmd[0];
@@ -157,9 +158,11 @@ sd_state_t q /* synthesis noprune */;
 always @(posedge clk)
 begin
 	reg [1:0] dqm;		// Captures UDS/LDS as the DQM lines are multiplexed and can only be asserted later
+	reg [15:0] dq_reg;
 	
 	sd_cmd <= CMD_INHIBIT;
 	SDRAM_DQ <= 16'bZ;
+	dq_reg <= SDRAM_DQ;
 
 	if (reset != 0) 
 	begin		
@@ -247,25 +250,30 @@ begin
 
 		STATE_READ_CAS_1:
 			begin
-				dtack <= 1;								// We can assert DTACK two cycles before providing the data
 				SDRAM_A <= {4'b0010, cache_addr[8:0]};	// Select column of cache data. A10 = 1 for auto-precharge, A12/A11 = DQMH/DQML
 				sd_cmd <= CMD_READ;					// Start next read for 2nd halve of long-word
 				q <= STATE_READ_CAS_2;
 			end
 			
 		STATE_READ_CAS_2:
-			q <= STATE_READ_DATA_1;					// CAS delay is configured for 2 cycles
+			begin
+				dtack <= 1;								// We can assert DTACK two cycles before providing the data
+				q <= STATE_READ_DELAY;				// CAS delay is configured for 2 cycles
+			end
+
+		STATE_READ_DELAY:
+			q <= STATE_READ_DATA_1;
 
 		STATE_READ_DATA_1:
 			begin
-				dout <= SDRAM_DQ;						// Main data we're after
+				dout <= dq_reg;						// Main data we're after
 				q <= STATE_READ_DATA_2;
 			end
 
 		STATE_READ_DATA_2:
 			begin
-				cache_data <= SDRAM_DQ;				// 2nd halve of long-word, cache it, it'll pretty likely be needed soon
-				doWait(2, STATE_IDLE); 				// Wait tRP = 18ns for auto-precharge (2 cycles up to 111Mhz)
+				cache_data <= dq_reg;				// 2nd halve of long-word, cache it, it'll pretty likely be needed soon
+				doWait(1, STATE_IDLE); 				// Wait tRP = 18ns for auto-precharge (2 cycles up to 111Mhz)
 			end
 			
 		// Write states
