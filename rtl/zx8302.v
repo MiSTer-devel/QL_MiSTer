@@ -212,27 +212,36 @@ assign ipl = { ipc_ipl[1] && (irq_pending[4:0] == 0), ipc_ipl[0] };
 // vsync irq is set whenever vsync rises
 reg vsync_irq;
 wire vsync_irq_reset = reset || irq_ack[3];
-always @(posedge vs or posedge vsync_irq_reset) begin
-	if(vsync_irq_reset) 	vsync_irq <= 1'b0;
-	else	      	     	vsync_irq <= 1'b1;
+always @(posedge clk) begin
+	reg old_vs;
+	
+	old_vs <= vs;
+	if(vsync_irq_reset)   vsync_irq <= 1'b0;
+	else if(~old_vs & vs) vsync_irq <= 1'b1;
 end
 
 // toggling the mask will also trigger irqs ...
 wire gap_irq_in = mdv_gap && irq_mask[0];
 reg gap_irq;
 wire gap_irq_reset = reset || irq_ack[0];
-always @(posedge gap_irq_in or posedge gap_irq_reset) begin
-	if(gap_irq_reset) 	gap_irq <= 1'b0;
-	else	      	     	gap_irq <= 1'b1;
+always @(posedge clk) begin
+	reg old_irq;
+	
+	old_irq <= gap_irq_in;
+	if(gap_irq_reset)              gap_irq <= 1'b0;
+	else if(~old_irq & gap_irq_in) gap_irq <= 1'b1;
 end
 
 // toggling the mask will also trigger irqs ...
 wire xint_irq_in = xint && irq_mask[2];
 reg xint_irq;
 wire xint_irq_reset = reset || irq_ack[4];
-always @(posedge xint_irq_in or posedge xint_irq_reset) begin
-	if(xint_irq_reset) 	xint_irq <= 1'b0;
-	else	      	     	xint_irq <= 1'b1;
+always @(posedge clk) begin
+	reg old_irq;
+	
+	old_irq <= xint_irq_in;
+	if(xint_irq_reset)              xint_irq <= 1'b0;
+	else if(~old_irq & xint_irq_in) xint_irq <= 1'b1;
 end
 
 
@@ -272,7 +281,12 @@ mdv mdv
 
 // the microdrive control register mctrl generates the drive selection
 reg [7:0] mdv_sel;
-always @(negedge mctrl[1]) mdv_sel <= { mdv_sel[6:0], mctrl[0] };
+always @(posedge clk) begin
+	reg old_mctrl;
+	
+	old_mctrl <= mctrl[1];
+	if(old_mctrl & ~mctrl[1]) mdv_sel <= { mdv_sel[6:0], mctrl[0] };
+end
 
 // ---------------------------------------------------------------------------------
 // -------------------------------------- RTC --------------------------------------
