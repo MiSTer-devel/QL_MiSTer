@@ -202,11 +202,12 @@ video_freak video_freak
 `include "build_id.v" 
 parameter CONF_STR = {
 	"QL;;",
+	"S0,WIN,Mount HD image;",	
 	"-;",
-	"S,WIN,Mount HD image;",	
-	"F,MDV,Load MDV image;",
+	"F2,MDV,Load MDV image;",
 	"O2,MDV direction,normal,reverse;",
-	"F,ROM,Load OS;",
+	"-;",
+	"F4,ROM,Load OS;",
 	"-;",
 	"O3,Video mode,PAL,NTSC;",
 	"OBC,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -786,7 +787,7 @@ wire gc_ram1 = gc_en && {cpu_addr[23:15], 3'b000} == 12'h010;				// 32kb additio
 wire gc_ram2 = gc_en && {cpu_addr[23:14], 2'b00} == 12'h01C && !gc_io; 	// 16kb additional SuperGoldCard RAM $1c100-$1ffff
 wire gc_boot_rom = gc_en && cpu_addr[23:16] == 8'h04;							// Another copy of the boot ROM $040000-$04ffff
 wire gc_os_rom = gc_en && cpu_addr[23:16] == 8'h40;							// SuperGoldCard copy of QL ROM $400000-$40ffff
-wire gc_ext_io = gc_en && {cpu_addr[23:18], 2'b00} == 8'h4c;				// SuperGoldCard extended I/O $4c0000-$4fffff
+//wire gc_ext_io = gc_en && {cpu_addr[23:18], 2'b00} == 8'h4c;				// SuperGoldCard extended I/O $4c0000-$4fffff
 
 wire [15:0] io_dout = 
 	qimi_sel? {qimi_data, qimi_data}:
@@ -835,10 +836,10 @@ wire cpu_dtack =
 	!ram_delay_dtack;
 
 // Debugging only
-reg [23:0] cpu_addr_reg  /* synthesis noprune */;
-always @(posedge clk_sys) begin
-	cpu_addr_reg <= cpu_addr;	
-end
+//reg [23:0] cpu_addr_reg  /* synthesis noprune */;
+//always @(posedge clk_sys) begin
+//	cpu_addr_reg <= cpu_addr;	
+//end
 
 wire [23:1] cpu_addr16;
 wire [23:0] cpu_addr = {cpu_addr16, !cpu_uds && cpu_lds} & cpu_addr_mask;
