@@ -124,7 +124,7 @@ always@(posedge clk) begin
 	end
 end
 
-// veritical pixel counter
+// vertical pixel counter
 always@(posedge clk) begin
 	reg [5:0] flash_cnt;
 

@@ -5,6 +5,7 @@
 // https://github.com/mist-devel
 // 
 // Copyright (c) 2015 Till Harbaum <till@harbaum.org> 
+// Copyright (c) 2021 Daniele Terdina
 // 
 // This source file is free software: you can redistribute it and/or modify 
 // it under the terms of the GNU General Public License as published 
@@ -23,7 +24,7 @@
 module zx8302
 (
 		input          clk,
-		input          clk11,     // 11 MHz ipc
+		input          ce_11m,    	// 11 MHz ipc
       input          reset,
       input          reset_mdv,
 		
@@ -55,16 +56,26 @@ module zx8302
 		input				cen,
 
 		input          ce_131k,
-		input  [32:0]  rtc_data,
+		input  [32:0]  rtc_data,		// Seconds since 1970-01-01 00:00:00
 
 		input				cpu_sel,
 		input				cpu_wr,
 		input [1:0] 	cpu_addr,      // a[5,1]
-		input [1:0] 	cpu_ds,
+		input			 	cpu_uds,
+		input			 	cpu_lds,
 		input [15:0]   cpu_din,
 		output [15:0]  cpu_dout
 		
 );
+
+
+// comdata shift register
+wire ipc_comdata_in = comdata_reg[0];
+reg [3:0] comdata_reg /* synthesis noprune */;
+reg [1:0] ipc_busy;
+reg comdata_to_cpu;
+reg prev_ipc_comctrl;
+
 
 // ---------------------------------------------------------------------------------
 // ----------------------------- CPU register write --------------------------------
@@ -72,26 +83,32 @@ module zx8302
 
 reg [7:0] mctrl;
 
-reg ipc_write;
-reg [3:0] ipc_write_data;
 
-// cpu is writing io registers
+// Handles:
+// 1. CPU is writing to registers
+// 2. reset
+// 3. comctrl from IPC
+
 always @(posedge clk) begin
-	if(cen) begin
+	if (reset) begin
+		comdata_reg <= 4'b0000;
+		ipc_busy <= 2'b11;
+	end
+	else if(cen) begin
 		irq_ack <= 5'd0;
-		ipc_write <= 1'b0;
+
 
 		// cpu writes to 0x18XXX area
 		if(cpu_sel && cpu_wr) begin
-			// even addresses have lds=0 and use the lower 8 data bus bits
-			if(!cpu_ds[1]) begin
+			// even addresses have uds asserted and use the upper 8 data bus bits
+			if (cpu_uds) begin
 				// cpu writes microdrive control register
 				if(cpu_addr == 2'b10)
 					mctrl <= cpu_din[15:8];
 			end
 
-			// odd addresses have lds=0 and use the lower 8 data bus bits
-			if(!cpu_ds[0]) begin
+			// odd addresses have lds asserted and use the lower 8 data bus bits
+			if (cpu_lds) begin
 				// 18003 - IPCWR
 				// (host sends a single bit to ipc)
 				if(cpu_addr == 2'b01) begin
@@ -100,8 +117,8 @@ always @(posedge clk) begin
 					// D = data bit (0/1)
 					// E = stop bit (should be 1)
 					// X = extra stopbit (should be 1)
-					ipc_write <= 1'b1;
-					ipc_write_data <= cpu_din[3:0];
+					comdata_reg <= cpu_din[3:0];
+					ipc_busy <= 2'b11;		// Show IPC BUSY until the IPC asserts COMCTL twice
 				end
 
 				// cpu writes interrupt register
@@ -112,6 +129,12 @@ always @(posedge clk) begin
 			end
 		end
 	end
+	if (!ipc_comctrl && prev_ipc_comctrl) begin
+		comdata_to_cpu <= zx8302_comdata_in;	// Latch COMDATA since the IPC will quickly reset it to 1 when sending data
+		comdata_reg <= { 1'b1, comdata_reg[3:1] };
+		ipc_busy <= { 1'b0, ipc_busy[1] };
+	end
+	prev_ipc_comctrl <= ipc_comctrl;
 end
 
 // ---------------------------------------------------------------------------------
@@ -128,13 +151,13 @@ end
 // bit 6       IPC busy
 // bit 7       COMDATA
 
-wire [7:0] io_status = { zx8302_comdata_in, ipc_busy, 2'b00,
+wire [7:0] io_status = { comdata_to_cpu, ipc_busy[0], 2'b00,
 		mdv_gap, mdv_rx_ready, mdv_tx_empty, 1'b0 };
 
 assign cpu_dout =
 	// 18000/18001 and 18002/18003
-	(cpu_addr == 2'b00)?rtc[48:33]:
-	(cpu_addr == 2'b01)?rtc[32:17]:
+	(cpu_addr == 2'b00)?rtc[31:16]:
+	(cpu_addr == 2'b01)?rtc[15:0]:
 
 	// 18020/18021 and 18022/18023
 	(cpu_addr == 2'b10)?{io_status, irq_pending}:
@@ -149,36 +172,18 @@ assign cpu_dout =
 wire ipc_comctrl;
 wire ipc_comdata_out;
 
+
 // 8302 sees its own comdata as well as the one from the ipc
 wire zx8302_comdata_in = ipc_comdata_in && ipc_comdata_out;
 
-// comdata shift register
-wire ipc_comdata_in = comdata_reg[0];
-reg [3:0] comdata_reg /* synthesis noprune */;
-reg [1:0] comdata_cnt /* synthesis noprune */; 
 
-always @(negedge ipc_comctrl or posedge reset or posedge ipc_write) begin
-	if(reset) begin
-		comdata_reg <= 4'b0000;
-		comdata_cnt <= 2'd0;
-	end else if(ipc_write) begin
-		comdata_reg <= ipc_write_data;
-		comdata_cnt <= 2'd2;
-	end else begin
-		comdata_reg <= { 1'b0, comdata_reg[3:1] };
-		if(comdata_cnt != 0)
-			comdata_cnt <= comdata_cnt - 2'd1;
-	end
-end
-
-// comdata is busy until two bits have been shifted out
-wire ipc_busy = (comdata_cnt != 0);
 
 wire [1:0] ipc_ipl;
 
 ipc ipc (	
 	.reset    	    ( reset          ),
-	.clk11          ( clk11          ),
+	.clk				 ( clk            ),
+	.ce_11m         ( ce_11m         ),
 
 	.comctrl        ( ipc_comctrl    ),
 	.comdata_in     ( ipc_comdata_in ),
@@ -273,14 +278,25 @@ always @(negedge mctrl[1]) mdv_sel <= { mdv_sel[6:0], mctrl[0] };
 // -------------------------------------- RTC --------------------------------------
 // ---------------------------------------------------------------------------------
 
-reg [48:0] rtc;
+reg [31:0] rtc;
+reg [17:0] divClk;
 always @(posedge clk) begin
 	reg old_stb;
 
-	if(ce_131k) rtc <= rtc + 1'd1;
+	if (ce_131k)
+	begin
+		divClk <= divClk + 18'd1;
+		if (divClk == 18'd131249) divClk <= 0;
+		if (!divClk) rtc <= rtc + 1'd1;
+	end
 
+	// QL base is 1961-01-01 00:00:00
+	// MiSTer base is 1970-01-01 00:00:00
+	// Difference is 283996800 seconds (9 years + 2 leap days)
+	
+	// Bootstrap clock 
 	old_stb <= rtc_data[32];
-	if(old_stb != rtc_data[32]) rtc <= {32'd283996800 + rtc_data[31:0], 17'd0};
+	if (old_stb != rtc_data[32]) rtc <= {32'd283996800 + rtc_data[31:0]};
 end
 
 endmodule

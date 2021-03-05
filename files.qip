@@ -1,5 +1,6 @@
 set_global_assignment -name QIP_FILE rtl/T48/T8049.qip
-set_global_assignment -name QIP_FILE rtl/TG68K/TG68K.qip
+set_global_assignment -name QIP_FILE rtl/fx68k/fx68k.qip
+set_global_assignment -name QIP_FILE rtl/mgc_rom/mgc_rom.qip
 set_global_assignment -name VHDL_FILE rtl/rom_t49.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
 set_global_assignment -name VERILOG_FILE rtl/dpram.v
@@ -10,5 +11,6 @@ set_global_assignment -name VERILOG_FILE rtl/ipc.v
 set_global_assignment -name VERILOG_FILE rtl/mdv.v
 set_global_assignment -name VERILOG_FILE rtl/zx8301.v
 set_global_assignment -name VERILOG_FILE rtl/zx8302.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ql_timing.sv
 set_global_assignment -name SDC_FILE QL.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE QL.sv

@@ -22,7 +22,8 @@
 
 module ipc (
 	input 		 reset,
-	input        clk11,
+	input        clk,
+	input        ce_11m,
 
 	// synchronous serial connection
 	output       comctrl,
@@ -49,7 +50,8 @@ wire [63:0] kbd_matrix;
 
 keyboard keyboard (
         .reset    ( reset        ),
-        .clk      ( clk11        ),
+        .clk      ( clk          ),
+        .ce_11m   ( ce_11m       ),
 
 		  .ps2_key  ( ps2_key      ),
 
@@ -75,8 +77,8 @@ wire [7:0] t8049_p2_i = { comdata_out && comdata_in, 7'b0000000 };
 assign comdata_out = t8049_p2_o[7];
 
 t8049_notri #(0) t8049 (
-	.xtal_i    ( clk11      ),
-   .xtal_en_i ( 1'b1       ),
+	.xtal_i    ( clk        ),
+   .xtal_en_i ( ce_11m     ),
    .reset_n_i ( !reset     ),
 	.t0_i      ( 1'b0       ),
    .t1_i      ( 1'b0       ),
