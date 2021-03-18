@@ -142,7 +142,7 @@ typedef enum reg [3:0] {
 sd_cmd_t sd_cmd;   // current command sent to sd ram
 
 // drive control signals according to current command
-assign SDRAM_nCS  = 0;
+assign SDRAM_nCS  = sd_cmd[3];
 assign SDRAM_nRAS = sd_cmd[2];
 assign SDRAM_nCAS = sd_cmd[1];
 assign SDRAM_nWE  = sd_cmd[0];
